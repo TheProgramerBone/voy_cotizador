@@ -1,6 +1,6 @@
 @echo off
 REM ============================================================
-REM  Construye VoyCotizador.exe (carpeta unica) con PyInstaller.
+REM  Construye QuoteTrip.exe (carpeta unica) con PyInstaller.
 REM  Usa el Python del .venv si existe e instala las dependencias
 REM  de escritorio (PyInstaller, pywebview) si hacen falta.
 REM ============================================================
@@ -23,11 +23,11 @@ REM --- Compilar ---
 "%PY%" -m PyInstaller --noconfirm --clean VoyCotizador.spec
 
 echo.
-if exist "dist\VoyCotizador\VoyCotizador.exe" (
+if exist "dist\QuoteTrip\QuoteTrip.exe" (
   echo ============================================================
   echo  LISTO. El programa quedo en:
-  echo    dist\VoyCotizador\VoyCotizador.exe
-  echo  Reparte TODA la carpeta  dist\VoyCotizador\
+  echo    dist\QuoteTrip\QuoteTrip.exe
+  echo  Reparte TODA la carpeta  dist\QuoteTrip\
   echo ============================================================
 ) else (
   echo ============================================================

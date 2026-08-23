@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Lanzador de escritorio para VoyTravel · Cotizaciones.
+Lanzador de escritorio para QuoteTrip.
 
 Arranca Streamlit como PROCESO APARTE (no en un hilo: Streamlit instala un
 manejador de señales que solo funciona en el hilo principal) y muestra la app
@@ -20,7 +20,7 @@ import sys
 import time
 from pathlib import Path
 
-TITULO = "VoyTravel · Cotizaciones"
+TITULO = "QuoteTrip"
 
 
 def _dir_recursos() -> Path:
@@ -50,7 +50,8 @@ def _esperar_servidor(puerto: int, timeout: int = 90) -> bool:
 
 def _args_streamlit(app_path: str, puerto: int):
     return [
-        "run", app_path,
+        "run",
+        app_path,
         f"--server.port={puerto}",
         "--server.address=127.0.0.1",
         "--server.headless=true",
@@ -66,6 +67,7 @@ def _run_server_inproc(puerto: int):
     app_path = str(_dir_recursos() / "app.py")
     sys.argv = ["streamlit"] + _args_streamlit(app_path, puerto)
     from streamlit.web import cli as stcli
+
     sys.exit(stcli.main())
 
 
@@ -107,10 +109,12 @@ def main():
 
     try:
         import webview
+
         webview.create_window(TITULO, url, width=1250, height=880)
-        webview.start()            # bloquea hasta que se cierra la ventana
+        webview.start()  # bloquea hasta que se cierra la ventana
     except Exception:
         import webbrowser
+
         webbrowser.open(url)
         try:
             proc.wait()

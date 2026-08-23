@@ -7,6 +7,7 @@ __pycache__/
 # --- Claude Code: instrucciones y ajustes personales, no compartidos ---
 CLAUDE.local.md
 .claude/settings.local.json
+.claude/pendiente/
 
 # --- Artefactos de compilacion (se regeneran; NO van al repo) ---
 build/
@@ -16,5 +17,5 @@ Output/
 # --- Datos locales: base de datos, historial y logs (NO subir) ---
 data/
 
-# El instalador VoyCotizador-Setup.exe se publica en GitHub Releases,
+# El instalador QuoteTrip-Setup.exe se publica en GitHub Releases,
 # no dentro del repositorio.

@@ -1,6 +1,6 @@
 ; ===========================================================================
-;  Instalador de VoyTravel · Cotizaciones  (Inno Setup 6)
-;  Empaqueta la carpeta autocontenida dist\VoyCotizador\ en un unico
+;  Instalador de QuoteTrip  (Inno Setup 6)
+;  Empaqueta la carpeta autocontenida dist\QuoteTrip\ en un unico
 ;  Setup.exe que instala la app, crea accesos directos y desinstalador.
 ;  NO requiere Python ni dependencias en el equipo destino.
 ;
@@ -8,10 +8,10 @@
 ;             o ejecuta  build_installer.bat
 ; ===========================================================================
 
-#define MyAppName "VoyTravel Cotizaciones"
+#define MyAppName "QuoteTrip"
 #define MyAppVersion "1.1.0"
-#define MyAppPublisher "Travels Moreno Blanco S.A.S."
-#define MyAppExeName "VoyCotizador.exe"
+#define MyAppPublisher "QuoteTrip"
+#define MyAppExeName "QuoteTrip.exe"
 
 [Setup]
 ; AppId identifica la app para actualizaciones/desinstalacion (no lo cambies)
@@ -19,12 +19,12 @@ AppId={{A4B5A28E-DC27-4ACB-B8EC-66F81687B0A8}}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
-DefaultDirName={autopf}\VoyCotizador
+DefaultDirName={autopf}\QuoteTrip
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 UninstallDisplayIcon={app}\{#MyAppExeName}
 OutputDir=Output
-OutputBaseFilename=VoyCotizador-Setup
+OutputBaseFilename=QuoteTrip-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -43,7 +43,7 @@ Name: "desktopicon"; Description: "Crear un acceso directo en el escritorio"; Gr
 
 [Files]
 ; Toda la carpeta autocontenida generada por PyInstaller
-Source: "dist\VoyCotizador\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "dist\QuoteTrip\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 ; Copia del icono en la raiz para usarlo en los accesos directos
 #if FileExists("assets\logo.ico")
 Source: "assets\logo.ico"; DestDir: "{app}"; Flags: ignoreversion

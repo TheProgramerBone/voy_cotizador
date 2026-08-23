@@ -1,9 +1,10 @@
-# Crear el instalador (Setup.exe) de VoyTravel · Cotizaciones
+# Crear el instalador (Setup.exe) de QuoteTrip
 
-El objetivo: un **único `VoyCotizador-Setup.exe`** que, en un computador nuevo,
-se instala con doble clic y funciona — sin instalar Python ni nada más.
+El objetivo: un **único `QuoteTrip-Setup.exe`** que, en un computador nuevo,
+se instala con doble clic y funciona — sin instalar Python ni nada más. Es
+el archivo pensado para entregar a un cliente nuevo que compre la app.
 
-Esto es posible porque el build de PyInstaller (`dist\VoyCotizador\`) ya lleva
+Esto es posible porque el build de PyInstaller (`dist\QuoteTrip\`) ya lleva
 Python y todas las librerías dentro. El instalador solo lo empaqueta con
 accesos directos, icono y desinstalador.
 
@@ -21,19 +22,24 @@ build_installer.bat
 ```
 
 Ese script:
-1. Compila la app con PyInstaller si aún no existe (`dist\VoyCotizador\`).
+1. Compila la app con PyInstaller si aún no existe (`dist\QuoteTrip\`).
 2. Compila el instalador con Inno Setup.
 
-Resultado: **`Output\VoyCotizador-Setup.exe`**.
+Resultado: **`Output\QuoteTrip-Setup.exe`**.
 
 ## Instalar en un computador nuevo
 
-Copia `VoyCotizador-Setup.exe` al equipo y ábrelo. Instala por usuario (no pide
+Copia `QuoteTrip-Setup.exe` al equipo y ábrelo. Instala por usuario (no pide
 permisos de administrador), crea acceso directo en el menú de inicio y, si lo
 marcas, en el escritorio. Para desinstalar: "Agregar o quitar programas".
 
-- La base de datos del historial se guarda en `%LOCALAPPDATA%\VoyTravel\`, así
-  que sobrevive a actualizaciones y desinstalaciones.
+- La base de datos del historial y la cuenta de la agencia se guardan en
+  `%LOCALAPPDATA%\QuoteTrip\`, así que sobreviven a actualizaciones y
+  desinstalaciones.
+- La primera vez que se abre, pide registrar la cuenta de la agencia (razón
+  social, NIT, logo, colores) y un usuario/contraseña — es el único login
+  para todos los que usen ese equipo. Las veces siguientes pide iniciar
+  sesión.
 
 ## Ventana nativa (WebView2)
 

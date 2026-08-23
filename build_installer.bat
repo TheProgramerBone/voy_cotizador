@@ -1,17 +1,17 @@
 @echo off
 REM ============================================================
-REM  Genera el instalador VoyCotizador-Setup.exe
+REM  Genera el instalador QuoteTrip-Setup.exe
 REM  Paso 1: compila la app con PyInstaller (si hace falta)
 REM  Paso 2: compila el instalador con Inno Setup
 REM ============================================================
 cd /d "%~dp0"
 
 REM --- Paso 1: build de PyInstaller ---
-if not exist "dist\VoyCotizador\VoyCotizador.exe" (
+if not exist "dist\QuoteTrip\QuoteTrip.exe" (
   echo No existe el ejecutable. Compilando la app primero...
   call build_exe.bat
 )
-if not exist "dist\VoyCotizador\VoyCotizador.exe" (
+if not exist "dist\QuoteTrip\QuoteTrip.exe" (
   echo ERROR: no se pudo compilar la app. Revisa build_exe.bat.
   pause & exit /b 1
 )
@@ -31,10 +31,10 @@ echo Compilando el instalador...
 "%ISCC%" installer.iss
 
 echo.
-if exist "Output\VoyCotizador-Setup.exe" (
+if exist "Output\QuoteTrip-Setup.exe" (
   echo ============================================================
   echo  LISTO. Instalador generado en:
-  echo    Output\VoyCotizador-Setup.exe
+  echo    Output\QuoteTrip-Setup.exe
   echo  Ese unico archivo se instala en cualquier Windows nuevo.
   echo ============================================================
 ) else (

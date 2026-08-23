@@ -1,14 +1,14 @@
 # -*- mode: python ; coding: utf-8 -*-
 # ---------------------------------------------------------------------------
-# Spec de PyInstaller 6.x para VoyTravel · Cotizaciones (Windows, carpeta única).
-# Genera dist/VoyCotizador/VoyCotizador.exe
+# Spec de PyInstaller 6.x para QuoteTrip (Windows, carpeta única).
+# Genera dist/QuoteTrip/QuoteTrip.exe
 #
 # Construir con:   python -m PyInstaller --noconfirm --clean VoyCotizador.spec
 # ---------------------------------------------------------------------------
 import os
 from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metadata
 
-datas = [("app.py", "."), ("assets", "assets")]
+datas = [("app.py", "."), ("assets", "assets"), ("quotetrip", "quotetrip")]
 binaries = []
 hiddenimports = []
 
@@ -60,7 +60,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="VoyCotizador",
+    name="QuoteTrip",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -75,5 +75,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name="VoyCotizador",
+    name="QuoteTrip",
 )
