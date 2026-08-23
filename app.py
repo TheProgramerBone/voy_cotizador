@@ -80,7 +80,7 @@ APP_VERSION = "1.1.0"
 # Para habilitar el aviso de actualización, apunta esta URL a un archivo
 # version.json publicado (por ejemplo en GitHub Releases). Déjalo vacío para
 # desactivar la comprobación. Ver README-actualizaciones.md.
-UPDATE_URL = "https://raw.githubusercontent.com/TheProgramerBone/voy_cotizador/main/version.json"
+UPDATE_URL = "https://raw.githubusercontent.com/TheProgramerBone/voy_cotizador/master/version.json"
 
 # --- Registro de errores (log) ---
 LOG_DIR = DATA_DIR / "logs"
