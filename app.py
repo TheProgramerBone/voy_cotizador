@@ -11,14 +11,11 @@ Ejecutar:   streamlit run app.py
 =======================================================================
 """
 
-import csv
-import io
 from datetime import date
 
 import streamlit as st
 
 from quotetrip import auth, tutorial
-from quotetrip.calculos import formato_cop
 from quotetrip.config import (
     APP_VERSION,
     COLOR_PRIMARIO_DEF,
@@ -29,8 +26,8 @@ from quotetrip.config import (
     buscar_actualizacion,
     ruta_logo_cuenta,
 )
-from quotetrip.cotizacion_ui import render_tab_cotizacion
-from quotetrip.db import borrar_historial, init_db, obtener_cuenta, obtener_historial
+from quotetrip.cotizacion_ui import render_tab_cotizacion, render_tab_historial
+from quotetrip.db import init_db, obtener_cuenta
 
 st.set_page_config(page_title=f"{PRODUCTO_NOMBRE} · Cotizaciones", page_icon="✈️", layout="wide")
 init_db()
@@ -47,6 +44,11 @@ _codigo_pendiente = st.session_state.get("codigo_recuperacion_mostrado")
 if _codigo_pendiente:
     auth.pantalla_codigo_recuperacion(_codigo_pendiente)
     st.stop()
+
+# "Recordarme en este equipo": se marcó en un login anterior y persiste en la
+# BD (sobrevive a cerrar y volver a abrir la app, no solo a un rerun).
+if cuenta.get("sesion_recordada"):
+    st.session_state["autenticado"] = True
 
 if not st.session_state.get("autenticado"):
     auth.pantalla_login(cuenta)
@@ -78,8 +80,12 @@ with st.sidebar:
 
     st.divider()
     st.markdown("#### Datos del cliente")
-    cliente = st.text_input("Nombre del cliente", placeholder="Ej: Familia Pérez Gómez")
-    fecha_cotiz = st.date_input("Fecha de la cotización", value=date.today(), format="DD/MM/YYYY")
+    st.session_state.setdefault("cliente", "")
+    st.session_state.setdefault("fecha_cotiz", date.today())
+    cliente = st.text_input(
+        "Nombre del cliente", key="cliente", placeholder="Ej: Familia Pérez Gómez"
+    )
+    fecha_cotiz = st.date_input("Fecha de la cotización", key="fecha_cotiz", format="DD/MM/YYYY")
 
     st.divider()
     st.markdown("#### 🎨 Colores corporativos")
@@ -91,7 +97,10 @@ with st.sidebar:
 
     st.divider()
     st.markdown("#### Vuelos y traslados")
-    compartir = st.checkbox("Usar los mismos vuelos y traslados en todas las opciones", value=True)
+    st.session_state.setdefault("compartir", True)
+    compartir = st.checkbox(
+        "Usar los mismos vuelos y traslados en todas las opciones", key="compartir"
+    )
 
     st.divider()
     with st.expander("⚙️ Datos de la cuenta"):
@@ -174,53 +183,7 @@ with tab_cotiz:
 # TAB · HISTORIAL
 # ----------------------------------------------------------------------
 with tab_hist:
-    st.subheader("Historial de cotizaciones")
-    registros = obtener_historial()
-
-    if not registros:
-        st.info("Todavía no hay cotizaciones guardadas.")
-    else:
-        tabla = [
-            {
-                "ID": r["id"],
-                "Cliente": r["cliente"],
-                "Fecha": r["fecha_cotiz"],
-                "Opciones": r.get("num_opciones") or 1,
-                "Hoteles": r.get("hoteles") or "-",
-                "Desde (x pasajero)": f"${formato_cop(r.get('valor_desde') or 0)}",
-                "Generada": r["creado_en"],
-            }
-            for r in registros
-        ]
-        st.dataframe(tabla, use_container_width=True, hide_index=True)
-
-        c1, c2 = st.columns(2)
-        with c1:
-            buf = io.StringIO()
-            w = csv.DictWriter(buf, fieldnames=list(tabla[0].keys()))
-            w.writeheader()
-            w.writerows(tabla)
-            st.download_button(
-                "⬇️  Descargar historial (CSV)",
-                data=buf.getvalue().encode("utf-8-sig"),
-                file_name="historial_cotizaciones.csv",
-                mime="text/csv",
-                use_container_width=True,
-            )
-        with c2:
-            if st.button("🗑️  Vaciar historial", use_container_width=True):
-                st.session_state["confirmar_borrado"] = True
-
-        if st.session_state.get("confirmar_borrado"):
-            st.warning("¿Seguro que deseas eliminar **todo** el historial?")
-            cb1, cb2 = st.columns(2)
-            if cb1.button("Sí, borrar todo", type="primary", use_container_width=True):
-                borrar_historial()
-                st.session_state["confirmar_borrado"] = False
-                st.rerun()
-            if cb2.button("Cancelar", use_container_width=True):
-                st.session_state["confirmar_borrado"] = False
-                st.rerun()
+    render_tab_historial()
 
 # ----------------------------------------------------------------------
 # TAB · AYUDA

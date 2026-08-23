@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Pestaña "Cotización": servicios compartidos, opciones (pasajeros, fechas,
-hotel, servicios), cálculo en vivo y el botón "Aplicar y Exportar" que arma
-el PDF y lo guarda en el historial."""
+"""Pestañas "Cotización" e "Historial": servicios compartidos, opciones
+(pasajeros, fechas, hotel, servicios), cálculo en vivo, el botón "Aplicar y
+Exportar" que arma el PDF y lo guarda en el historial, y la recarga de una
+cotización guardada para editarla / recotizar."""
 
+import csv
+import io
+import json
 import traceback
 from datetime import date
 
@@ -17,7 +21,7 @@ from .calculos import (
     texto_pasajeros,
 )
 from .config import CLAVES_COMPARTIBLES, INCLUSIONES, LOG_PATH, logger
-from .db import guardar_cotizacion
+from .db import borrar_historial, guardar_cotizacion, obtener_historial
 from .pdf import construir_pdf
 
 
@@ -33,6 +37,14 @@ def _bytes_uno(key):
     return f.getvalue() if f else None
 
 
+def _valor_por_defecto(key, valor_def):
+    """Evita el warning de Streamlit ("created with a default value but also
+    had its value set via Session State") cuando `cargar_cotizacion_en_formulario`
+    ya preestableció esta key: si ya existe en session_state, no se pasa
+    `value=` al widget (session_state manda)."""
+    return {} if key in st.session_state else {"value": valor_def}
+
+
 def fila_servicio(clave, etiqueta, desc_def, keyp, hotel_nombre=""):
     """Renderiza un servicio (check + descripción + precio + comisión + base).
     La comisión se suma al precio. Devuelve dict o None."""
@@ -40,20 +52,28 @@ def fila_servicio(clave, etiqueta, desc_def, keyp, hotel_nombre=""):
         return None
     if clave == "hotel" and hotel_nombre.strip():
         desc_def = f"Hotel {hotel_nombre.strip()} Todo Incluido"
-    desc = st.text_input(f"Descripción · {etiqueta}", value=desc_def, key=f"desc_{keyp}")
+    desc = st.text_input(
+        f"Descripción · {etiqueta}",
+        key=f"desc_{keyp}",
+        **_valor_por_defecto(f"desc_{keyp}", desc_def),
+    )
     c1, c2, c3 = st.columns(3)
     with c1:
         monto = st.number_input(
-            f"Precio · {etiqueta} (COP)", min_value=0, step=50000, value=0, key=f"cost_{keyp}"
+            f"Precio · {etiqueta} (COP)",
+            min_value=0,
+            step=50000,
+            key=f"cost_{keyp}",
+            **_valor_por_defecto(f"cost_{keyp}", 0),
         )
     with c2:
         comision = st.number_input(
             f"Comisión · {etiqueta} (COP)",
             min_value=0,
             step=10000,
-            value=0,
             key=f"com_{keyp}",
             help="Se suma al precio de este servicio.",
+            **_valor_por_defecto(f"com_{keyp}", 0),
         )
     with c3:
         base = st.selectbox(
@@ -133,7 +153,11 @@ def render_tab_cotizacion(
         with tab:
             top1, top2 = st.columns([3, 1])
             with top1:
-                st.text_input("Nombre de la opción", value=f"Opción {i + 1}", key=f"nom_{oid}")
+                st.text_input(
+                    "Nombre de la opción",
+                    key=f"nom_{oid}",
+                    **_valor_por_defecto(f"nom_{oid}", f"Opción {i + 1}"),
+                )
             with top2:
                 st.write("")
                 if len(opciones) > 1 and st.button(
@@ -147,16 +171,16 @@ def render_tab_cotizacion(
             with f1:
                 st.date_input(
                     "Fecha de ida",
-                    value=date(date.today().year, 1, 1),
                     format="DD/MM/YYYY",
                     key=f"ida_{oid}",
+                    **_valor_por_defecto(f"ida_{oid}", date(date.today().year, 1, 1)),
                 )
             with f2:
                 st.date_input(
                     "Fecha de regreso",
-                    value=date(date.today().year, 1, 5),
                     format="DD/MM/YYYY",
                     key=f"reg_{oid}",
+                    **_valor_por_defecto(f"reg_{oid}", date(date.today().year, 1, 5)),
                 )
             ida = st.session_state[f"ida_{oid}"]
             reg = st.session_state[f"reg_{oid}"]
@@ -175,15 +199,19 @@ def render_tab_cotizacion(
                     st.number_input(
                         "Adultos (mayores de 12 años)",
                         min_value=1,
-                        value=2,
                         step=1,
                         key=f"ad_{oid}",
+                        **_valor_por_defecto(f"ad_{oid}", 2),
                     )
                 )
             with p2:
                 menores = int(
                     st.number_input(
-                        "Menores (12 años o menos)", min_value=0, value=0, step=1, key=f"me_{oid}"
+                        "Menores (12 años o menos)",
+                        min_value=0,
+                        step=1,
+                        key=f"me_{oid}",
+                        **_valor_por_defecto(f"me_{oid}", 0),
                     )
                 )
             personas = adultos + menores
@@ -226,8 +254,8 @@ def render_tab_cotizacion(
                             "Valor por menor (COP)",
                             min_value=0,
                             step=50000,
-                            value=0,
                             key=f"vm_{oid}",
+                            **_valor_por_defecto(f"vm_{oid}", 0),
                         )
                     )
 
@@ -276,8 +304,20 @@ def render_tab_cotizacion(
             st.error("Ingresa el **nombre del cliente** en la barra lateral antes de exportar.")
         else:
             try:
+                # Servicios compartidos: iguales para todas las opciones, se leen una sola vez
+                serv_comp = []
+                if compartir:
+                    for clave, etiqueta, desc_def in INCLUSIONES:
+                        if clave in CLAVES_COMPARTIBLES and st.session_state.get(
+                            f"chk_{clave}_shared"
+                        ):
+                            serv_comp.append(
+                                _leer_servicio(clave, etiqueta, desc_def, f"{clave}_shared")
+                            )
+
                 # Reconstruir todas las opciones desde session_state
                 opciones_pdf = []
+                opciones_snapshot = []
                 hoteles, valores_desde = [], []
                 error = None
 
@@ -305,17 +345,6 @@ def render_tab_cotizacion(
                             continue
                         if st.session_state.get(f"chk_{clave}_{oid}"):
                             serv.append(_leer_servicio(clave, etiqueta, desc_def, f"{clave}_{oid}"))
-
-                    # Servicios compartidos
-                    serv_comp = []
-                    if compartir:
-                        for clave, etiqueta, desc_def in INCLUSIONES:
-                            if clave in CLAVES_COMPARTIBLES and st.session_state.get(
-                                f"chk_{clave}_shared"
-                            ):
-                                serv_comp.append(
-                                    _leer_servicio(clave, etiqueta, desc_def, f"{clave}_shared")
-                                )
 
                     servicios = serv_comp + serv
                     if not servicios:
@@ -348,6 +377,19 @@ def render_tab_cotizacion(
                             **calc,
                         }
                     )
+                    opciones_snapshot.append(
+                        {
+                            "nombre": nombre,
+                            "ida": ida.isoformat() if ida else None,
+                            "regreso": reg.isoformat() if reg else None,
+                            "adultos": adultos,
+                            "menores": menores,
+                            "hotel": hotel,
+                            "tarifa_menor_dif": tarifa_menor_dif,
+                            "valor_menor": valor_menor,
+                            "servicios": serv,
+                        }
+                    )
                     if hotel:
                         hoteles.append(hotel)
                     valores_desde.append(int(round(calc["valor_pasajero"])) or calc["total_grupo"])
@@ -371,12 +413,22 @@ def render_tab_cotizacion(
                         "firma_cargo": cuenta.get("firma_cargo") or "",
                     }
                     pdf_bytes = construir_pdf(glob, opciones_pdf)
+                    snapshot = {
+                        "cliente": cliente.strip(),
+                        "fecha_cotiz": fecha_cotiz.isoformat(),
+                        "color_primario": color_primario,
+                        "color_secundario": color_secundario,
+                        "compartir": compartir,
+                        "servicios_compartidos": serv_comp,
+                        "opciones": opciones_snapshot,
+                    }
                     guardar_cotizacion(
                         cliente.strip(),
                         glob["fecha_cotiz_txt"],
                         len(opciones_pdf),
                         "; ".join(hoteles) if hoteles else "-",
                         min(valores_desde) if valores_desde else 0,
+                        datos_json=json.dumps(snapshot),
                     )
                     st.session_state["pdf_bytes"] = pdf_bytes
                     st.session_state["pdf_nombre"] = (
@@ -406,3 +458,183 @@ def render_tab_cotizacion(
             mime="application/pdf",
             use_container_width=True,
         )
+
+
+# ----------------------------------------------------------------------
+# Recargar una cotización del historial para editarla / recotizar
+# ----------------------------------------------------------------------
+def _preset_servicio(keyp, s, desc_def):
+    """Preestablece en session_state las claves de un servicio (o lo deja
+    desmarcado si `s` es None) ANTES de que el widget correspondiente se
+    vuelva a instanciar en el próximo rerun."""
+    st.session_state[f"chk_{keyp}"] = s is not None
+    if s is not None:
+        st.session_state[f"desc_{keyp}"] = s.get("desc") or desc_def
+        st.session_state[f"cost_{keyp}"] = int(s.get("monto") or 0)
+        st.session_state[f"com_{keyp}"] = int(s.get("comision") or 0)
+        st.session_state[f"base_{keyp}"] = (
+            "Por pasajero adulto" if s.get("base") == "persona" else "Total del grupo"
+        )
+
+
+def cargar_cotizacion_en_formulario(datos_json_str: str):
+    """Repuebla session_state con una cotización guardada, para editarla o
+    recotizar a partir de ella. Reemplaza las opciones actuales del
+    formulario (no se combinan).
+
+    Limitación de Streamlit: las capturas de vuelos/hotel que se subieron NO
+    se pueden re-adjuntar por código a un `file_uploader` — si la
+    recotización las necesita, hay que volver a subirlas."""
+    datos = json.loads(datos_json_str)
+
+    st.session_state["cliente"] = datos.get("cliente") or ""
+    if datos.get("fecha_cotiz"):
+        st.session_state["fecha_cotiz"] = date.fromisoformat(datos["fecha_cotiz"])
+    if datos.get("color_primario"):
+        st.session_state["cp"] = datos["color_primario"]
+    if datos.get("color_secundario"):
+        st.session_state["cs"] = datos["color_secundario"]
+    st.session_state["compartir"] = bool(datos.get("compartir"))
+
+    servicios_compartidos = {s["clave"]: s for s in datos.get("servicios_compartidos") or []}
+    for clave, etiqueta, desc_def in INCLUSIONES:
+        if clave in CLAVES_COMPARTIBLES:
+            _preset_servicio(f"{clave}_shared", servicios_compartidos.get(clave), desc_def)
+
+    nuevas_opciones = []
+    next_id = st.session_state.get("next_opt_id", 2)
+    hoy = date.today().year
+    for op in datos.get("opciones") or []:
+        oid = next_id
+        next_id += 1
+        nuevas_opciones.append({"id": oid})
+
+        st.session_state[f"nom_{oid}"] = op.get("nombre") or "Opción"
+        st.session_state[f"ida_{oid}"] = (
+            date.fromisoformat(op["ida"]) if op.get("ida") else date(hoy, 1, 1)
+        )
+        st.session_state[f"reg_{oid}"] = (
+            date.fromisoformat(op["regreso"]) if op.get("regreso") else date(hoy, 1, 5)
+        )
+        st.session_state[f"ad_{oid}"] = int(op.get("adultos") or 1)
+        st.session_state[f"me_{oid}"] = int(op.get("menores") or 0)
+        st.session_state[f"hotel_{oid}"] = op.get("hotel") or ""
+        st.session_state[f"tmd_{oid}"] = bool(op.get("tarifa_menor_dif"))
+        st.session_state[f"vm_{oid}"] = int(op.get("valor_menor") or 0)
+
+        servicios_opcion = {s["clave"]: s for s in op.get("servicios") or []}
+        for clave, etiqueta, desc_def in INCLUSIONES:
+            if clave not in CLAVES_COMPARTIBLES:
+                _preset_servicio(f"{clave}_{oid}", servicios_opcion.get(clave), desc_def)
+
+    st.session_state["opciones"] = nuevas_opciones or [{"id": next_id}]
+    st.session_state["next_opt_id"] = next_id + (0 if nuevas_opciones else 1)
+    # Limpia el PDF de una exportación previa para no confundirlo con esta recotización
+    st.session_state.pop("pdf_bytes", None)
+    st.session_state.pop("pdf_nombre", None)
+    st.session_state["cotizacion_cargada"] = True
+    # NOTA: esta función solo puede llamarse como `on_click` de un botón (no
+    # después de un `if st.button(...):`) — muta claves que ya son de otros
+    # widgets (cliente, fecha_cotiz, cp/cs, compartir, etc.), y Streamlit
+    # prohíbe tocarlas una vez que esos widgets ya se instanciaron en el
+    # mismo run. `on_click` corre ANTES de que el run siguiente los vuelva a
+    # instanciar, que es el único momento en que esto es válido.
+
+
+# ----------------------------------------------------------------------
+# Pestaña "Historial": agrupado por cliente ("carpetas"), con recotización
+# ----------------------------------------------------------------------
+def render_tab_historial():
+    st.subheader("Historial de cotizaciones")
+
+    if st.session_state.pop("cotizacion_cargada", False):
+        st.success(
+            "Cotización cargada. Ve a la pestaña **📝 Cotización** para verla, editarla "
+            "y volver a exportarla. Si tenía capturas de vuelos u hotel, hay que "
+            "volver a subirlas — Streamlit no permite re-adjuntarlas por código."
+        )
+
+    registros = obtener_historial()
+    if not registros:
+        st.info("Todavía no hay cotizaciones guardadas.")
+        return
+
+    # -------- Agrupado por cliente ("carpetas") --------
+    grupos = {}
+    for r in registros:
+        grupos.setdefault(r["cliente"] or "Sin nombre", []).append(r)
+    orden = sorted(grupos.items(), key=lambda kv: max(f["creado_en"] for f in kv[1]), reverse=True)
+
+    for nombre_cliente, filas in orden:
+        valores = [f.get("valor_desde") or 0 for f in filas]
+        desde_txt = f"${formato_cop(min(valores))}" if valores else "-"
+        plural = "es" if len(filas) != 1 else ""
+        with st.expander(
+            f"📁 {nombre_cliente} — {len(filas)} cotización{plural} · desde {desde_txt}"
+        ):
+            for f in filas:
+                c1, c2 = st.columns([4, 1])
+                with c1:
+                    st.markdown(
+                        f"**{f['fecha_cotiz']}** · {f.get('num_opciones') or 1} opción(es) · "
+                        f"{f.get('hoteles') or '-'} · desde ${formato_cop(f.get('valor_desde') or 0)}"
+                    )
+                    st.caption(f"Generada: {f['creado_en']}")
+                with c2:
+                    if f.get("datos_json"):
+                        # on_click (no `if st.button(...):`) — ver nota en
+                        # cargar_cotizacion_en_formulario sobre por qué.
+                        st.button(
+                            "🔄 Cargar para editar",
+                            key=f"cargar_{f['id']}",
+                            use_container_width=True,
+                            on_click=cargar_cotizacion_en_formulario,
+                            args=(f["datos_json"],),
+                        )
+                    else:
+                        st.caption("No editable (antigua)")
+                st.divider()
+
+    # -------- Tabla completa + CSV + vaciar historial --------
+    st.divider()
+    tabla = [
+        {
+            "ID": r["id"],
+            "Cliente": r["cliente"],
+            "Fecha": r["fecha_cotiz"],
+            "Opciones": r.get("num_opciones") or 1,
+            "Hoteles": r.get("hoteles") or "-",
+            "Desde (x pasajero)": f"${formato_cop(r.get('valor_desde') or 0)}",
+            "Generada": r["creado_en"],
+        }
+        for r in registros
+    ]
+    st.dataframe(tabla, use_container_width=True, hide_index=True)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        buf = io.StringIO()
+        w = csv.DictWriter(buf, fieldnames=list(tabla[0].keys()))
+        w.writeheader()
+        w.writerows(tabla)
+        st.download_button(
+            "⬇️  Descargar historial (CSV)",
+            data=buf.getvalue().encode("utf-8-sig"),
+            file_name="historial_cotizaciones.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+    with c2:
+        if st.button("🗑️  Vaciar historial", use_container_width=True):
+            st.session_state["confirmar_borrado"] = True
+
+    if st.session_state.get("confirmar_borrado"):
+        st.warning("¿Seguro que deseas eliminar **todo** el historial?")
+        cb1, cb2 = st.columns(2)
+        if cb1.button("Sí, borrar todo", type="primary", use_container_width=True):
+            borrar_historial()
+            st.session_state["confirmar_borrado"] = False
+            st.rerun()
+        if cb2.button("Cancelar", use_container_width=True):
+            st.session_state["confirmar_borrado"] = False
+            st.rerun()

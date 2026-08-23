@@ -178,23 +178,31 @@ def pantalla_login(cuenta: dict):
     with st.form("form_login"):
         usuario = st.text_input("Usuario")
         password = st.text_input("Contraseña", type="password")
+        recordar = st.checkbox("Recordarme en este equipo", value=True)
         enviado = st.form_submit_button("Entrar", type="primary", use_container_width=True)
 
     if enviado:
         usuario_ok = usuario.strip() == (cuenta.get("usuario") or "").strip()
         if usuario_ok and verificar_password(cuenta, password):
+            actualizar_cuenta({"sesion_recordada": 1 if recordar else 0})
             st.session_state["autenticado"] = True
             st.rerun()
         else:
             st.error("Usuario o contraseña incorrectos.")
 
-    with st.expander("¿Olvidaste tu contraseña?"):
+    with st.expander("¿Olvidaste tu usuario o tu contraseña?"):
         _flujo_recuperacion(cuenta)
 
 
 def _flujo_recuperacion(cuenta: dict):
+    st.caption(
+        "Verifica tu identidad respondiendo la pregunta de seguridad o con el "
+        "código de recuperación que se te mostró al crear la cuenta. Te "
+        "recordamos tu usuario y, si quieres, puedes definir una contraseña "
+        "nueva ahí mismo."
+    )
     metodo = st.radio(
-        "¿Cómo quieres recuperar el acceso?",
+        "¿Cómo quieres verificar tu identidad?",
         ["Responder la pregunta de seguridad", "Usar el código de recuperación"],
         key="metodo_recuperacion",
     )
@@ -204,9 +212,13 @@ def _flujo_recuperacion(cuenta: dict):
             intento = st.text_input("Tu respuesta", key="recup_respuesta")
         else:
             intento = st.text_input("Código de recuperación", key="recup_codigo")
-        nueva1 = st.text_input("Nueva contraseña", type="password", key="recup_pass1")
-        nueva2 = st.text_input("Confirmar nueva contraseña", type="password", key="recup_pass2")
-        enviado = st.form_submit_button("Restablecer contraseña")
+        st.divider()
+        st.caption("Deja esto en blanco si solo quieres recuperar tu usuario.")
+        nueva1 = st.text_input("Nueva contraseña (opcional)", type="password", key="recup_pass1")
+        nueva2 = st.text_input(
+            "Confirmar nueva contraseña (opcional)", type="password", key="recup_pass2"
+        )
+        enviado = st.form_submit_button("Verificar identidad")
 
     if not enviado:
         return
@@ -219,6 +231,11 @@ def _flujo_recuperacion(cuenta: dict):
     if not ok:
         st.error("No coincide con lo registrado. Revisa e intenta de nuevo.")
         return
+
+    st.success(f"Tu usuario es: **{cuenta.get('usuario') or '—'}**")
+
+    if not nueva1 and not nueva2:
+        return
     if len(nueva1) < 6:
         st.error("La contraseña debe tener al menos 6 caracteres.")
         return
@@ -228,10 +245,13 @@ def _flujo_recuperacion(cuenta: dict):
 
     hash_password, salt_password = hash_secreto(nueva1)
     actualizar_cuenta({"hash_password": hash_password, "salt_password": salt_password})
-    st.success("Contraseña actualizada. Ya puedes iniciar sesión con la nueva contraseña arriba.")
+    st.success("Contraseña actualizada también. Ya puedes iniciar sesión arriba.")
 
 
 def cerrar_sesion():
+    """Cierra la sesión actual y olvida el "recordarme" de este equipo — la
+    próxima vez que se abra la app, vuelve a pedir usuario y contraseña."""
+    actualizar_cuenta({"sesion_recordada": 0})
     st.session_state["autenticado"] = False
     st.rerun()
 

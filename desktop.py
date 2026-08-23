@@ -59,6 +59,9 @@ def _args_streamlit(app_path: str, puerto: int):
         "--server.fileWatcherType=none",
         "--server.runOnSave=false",
         "--browser.gatherUsageStats=false",
+        # Oculta la barra propia de Streamlit ("Deploy" y el menú ⋮): esto es
+        # una app de escritorio, no tiene sentido ofrecer deploy ni el menú.
+        "--client.toolbarMode=minimal",
     ]
 
 

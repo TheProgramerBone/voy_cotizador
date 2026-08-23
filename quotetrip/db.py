@@ -54,7 +54,15 @@ def init_db():
 
 def _asegurar_columnas():
     """Migración: agrega columnas nuevas si la BD ya existía con otro esquema."""
-    nuevas = [("num_opciones", "INTEGER"), ("hoteles", "TEXT"), ("valor_desde", "INTEGER")]
+    nuevas = [
+        ("num_opciones", "INTEGER"),
+        ("hoteles", "TEXT"),
+        ("valor_desde", "INTEGER"),
+        # Snapshot completo (JSON) de la cotización, para poder recargarla y
+        # editarla/recotizar desde el historial. Las filas guardadas antes de
+        # esto quedan en NULL — se muestran como "no editables" en la UI.
+        ("datos_json", "TEXT"),
+    ]
     with _conectar() as con:
         existentes = {r[1] for r in con.execute("PRAGMA table_info(cotizaciones)")}
         for col, tipo in nuevas:
@@ -88,21 +96,34 @@ def _asegurar_tabla_cuenta():
                 hash_codigo_recup   TEXT,
                 salt_codigo_recup   TEXT,
                 tutorial_visto      INTEGER DEFAULT 0,
+                sesion_recordada    INTEGER DEFAULT 0,
                 creado_en           TEXT
             )
             """
         )
+    _asegurar_columnas_cuenta()
+
+
+def _asegurar_columnas_cuenta():
+    """Migración: agrega columnas nuevas a `cuenta` si ya existía sin ellas
+    (mismo patrón que `_asegurar_columnas` para `cotizaciones`)."""
+    nuevas = [("sesion_recordada", "INTEGER DEFAULT 0")]
+    with _conectar() as con:
+        existentes = {r[1] for r in con.execute("PRAGMA table_info(cuenta)")}
+        for col, tipo in nuevas:
+            if col not in existentes:
+                con.execute(f"ALTER TABLE cuenta ADD COLUMN {col} {tipo}")
 
 
 # ----------------------------------------------------------------------
 # Historial de cotizaciones
 # ----------------------------------------------------------------------
-def guardar_cotizacion(cliente, fecha_txt, num_opciones, hoteles, valor_desde):
+def guardar_cotizacion(cliente, fecha_txt, num_opciones, hoteles, valor_desde, datos_json=None):
     with _conectar() as con:
         con.execute(
             """INSERT INTO cotizaciones
-                   (cliente, fecha_cotiz, num_opciones, hoteles, valor_desde, creado_en)
-               VALUES (?, ?, ?, ?, ?, ?)""",
+                   (cliente, fecha_cotiz, num_opciones, hoteles, valor_desde, creado_en, datos_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
             (
                 cliente,
                 fecha_txt,
@@ -110,6 +131,7 @@ def guardar_cotizacion(cliente, fecha_txt, num_opciones, hoteles, valor_desde):
                 hoteles,
                 int(valor_desde),
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                datos_json,
             ),
         )
 
