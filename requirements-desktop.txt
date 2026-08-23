@@ -1,0 +1,3 @@
+# Dependencias para la versión de escritorio (además de requirements.txt)
+pywebview>=5.0     # ventana nativa (usa WebView2 en Windows 10/11)
+pyinstaller>=6.6   # solo si vas a generar el .exe (camino A2)

@@ -1,0 +1,16 @@
+# --- Entornos y editores ---
+.venv/
+.idea/
+__pycache__/
+*.pyc
+
+# --- Artefactos de compilacion (se regeneran; NO van al repo) ---
+build/
+dist/
+Output/
+
+# --- Datos locales: base de datos, historial y logs (NO subir) ---
+data/
+
+# El instalador VoyCotizador-Setup.exe se publica en GitHub Releases,
+# no dentro del repositorio.
