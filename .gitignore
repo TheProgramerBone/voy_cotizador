@@ -4,6 +4,10 @@
 __pycache__/
 *.pyc
 
+# --- Claude Code: instrucciones y ajustes personales, no compartidos ---
+CLAUDE.local.md
+.claude/settings.local.json
+
 # --- Artefactos de compilacion (se regeneran; NO van al repo) ---
 build/
 dist/
