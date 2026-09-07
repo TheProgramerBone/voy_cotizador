@@ -1,0 +1,543 @@
+# -*- coding: utf-8 -*-
+"""Pestaña "Plantillas": biblioteca de plantillas preestablecidas y
+personalizadas (crear, duplicar, editar, renombrar, eliminar, marcar como
+predeterminada) y el editor visual con vista previa en vivo.
+
+Sigue los mismos patrones de UI que el resto de QuoteTrip: listas tipo
+`st.expander`/columnas con botones de acción (`render_tab_historial` en
+`cotizacion_ui.py`), mutación de `session_state` solo vía `on_click=`
+cuando el widget afectado ya se renderizó antes en el mismo paso de
+script, y confirmación en dos pasos para acciones destructivas
+(`confirmar_borrado` en `cotizacion_ui.py`)."""
+
+import streamlit as st
+
+from .db import (
+    actualizar_cuenta,
+    actualizar_plantilla,
+    borrar_plantilla,
+    crear_plantilla,
+    obtener_plantilla,
+    obtener_plantillas,
+)
+from .pdf.models import (
+    ALINEACIONES,
+    FUENTES_CATALOGO,
+    LAYOUTS_SERVICIOS,
+    LOGO_ALTO_MAX_CM,
+    LOGO_ALTO_MIN_CM,
+    MARGEN_MAX_CM,
+    MARGEN_MIN_CM,
+    ORIENTACIONES,
+    POSICIONES_LOGO,
+    SECCIONES_BLOQUEADAS,
+    TAMANO_FUENTE_MAX_PT,
+    TAMANO_FUENTE_MIN_PT,
+    TAMANOS_PAGINA,
+    EncabezadoConfig,
+    PaginaConfig,
+    PieConfig,
+    SeccionConfig,
+    TemaConfig,
+    TemplateDefinition,
+    validar_plantilla,
+)
+from .pdf.presets import PRESET_POR_DEFECTO, listar_presets, obtener_preset
+from .pdf.preview import renderizar_previsualizacion
+
+ETIQUETAS_SECCION = {
+    "fecha": "Fecha",
+    "titulo": "Título",
+    "etiqueta_opcion": "Nombre de la opción",
+    "pasajeros": "Pasajeros",
+    "hotel_fechas": "Hotel y fechas",
+    "precios": "Precios",
+    "servicios": "Servicios incluidos",
+    "nota_legal": "Nota legal",
+    "firma": "Firma",
+    "anexos": "Anexos (vuelos/hotel)",
+}
+
+_ETIQUETAS_ALINEACION = {"izquierda": "Izquierda", "centro": "Centro", "derecha": "Derecha"}
+_ETIQUETAS_POSICION_LOGO = {"izquierda": "Izquierda", "centro": "Centro", "derecha": "Derecha"}
+_ETIQUETAS_ORIENTACION = {"vertical": "Vertical", "horizontal": "Horizontal"}
+_ETIQUETAS_LAYOUT_SERVICIOS = {"text": "Como texto", "table": "Como tabla"}
+
+# Campos de la cuenta que afectan a la vista previa — se usan como parte de
+# la clave de caché (ver `_preview_cacheada`).
+_CAMPOS_CUENTA_PREVIEW = (
+    "razon_social",
+    "nit",
+    "rnt",
+    "ciudad",
+    "telefonos",
+    "contacto",
+    "logo_path",
+    "color_primario",
+    "color_secundario",
+    "firma_nombre",
+    "firma_cargo",
+)
+
+
+# ----------------------------------------------------------------------
+# Entrada
+# ----------------------------------------------------------------------
+def render_tab_plantillas(cuenta: dict):
+    st.markdown("## 🎨 Plantillas")
+    if st.session_state.pop("plantillas_guardado_ok", False):
+        st.success("Plantilla guardada.")
+
+    if st.session_state.get("plantillas_editando_id"):
+        _render_editor(cuenta)
+    else:
+        _render_biblioteca(cuenta)
+
+
+# ----------------------------------------------------------------------
+# Vista previa (cacheada)
+# ----------------------------------------------------------------------
+@st.cache_data(show_spinner=False, ttl=300)
+def _preview_desde_json(definicion_json: str, cuenta_valores: tuple) -> bytes:
+    definicion = TemplateDefinition.from_json(definicion_json)
+    cuenta = dict(zip(_CAMPOS_CUENTA_PREVIEW, cuenta_valores))
+    return renderizar_previsualizacion(definicion, cuenta)
+
+
+def _preview_cacheada(definicion: TemplateDefinition, cuenta: dict) -> bytes:
+    cuenta_valores = tuple((cuenta or {}).get(c) for c in _CAMPOS_CUENTA_PREVIEW)
+    return _preview_desde_json(definicion.to_json(), cuenta_valores)
+
+
+# ----------------------------------------------------------------------
+# Biblioteca
+# ----------------------------------------------------------------------
+def _render_biblioteca(cuenta: dict):
+    predeterminada_id = cuenta.get("plantilla_predeterminada_id") or PRESET_POR_DEFECTO
+
+    st.caption(
+        "Elige el diseño de tus cotizaciones en PDF. Usa una plantilla "
+        "preestablecida tal cual, o duplícala para crear la tuya propia y "
+        "personalizarla — colores, tipografía, logo, orden de secciones."
+    )
+
+    st.markdown("### Preestablecidas")
+    for preset in listar_presets():
+        _fila_plantilla(
+            preset,
+            es_preset=True,
+            es_predeterminada=(preset.id == predeterminada_id),
+            cuenta=cuenta,
+        )
+
+    st.markdown("### Mis plantillas")
+    filas_custom = obtener_plantillas()
+    if not filas_custom:
+        st.info(
+            "Todavía no tienes plantillas propias. Duplica una preestablecida "
+            "para empezar a personalizarla."
+        )
+    for fila in filas_custom:
+        definicion = TemplateDefinition.from_json(fila["definicion_json"])
+        _fila_plantilla(
+            definicion,
+            es_preset=False,
+            es_predeterminada=(fila["id"] == predeterminada_id),
+            cuenta=cuenta,
+        )
+
+    st.divider()
+    st.markdown("### + Crear plantilla")
+    opciones_base = {p.id: p.nombre for p in listar_presets()}
+    st.selectbox(
+        "Empezar a partir de",
+        options=list(opciones_base.keys()),
+        format_func=lambda k: opciones_base[k],
+        key="nueva_plantilla_base",
+    )
+    st.button("Crear plantilla", on_click=_crear_desde_preset)
+
+
+def _fila_plantilla(
+    definicion: TemplateDefinition, es_preset: bool, es_predeterminada: bool, cuenta: dict
+):
+    with st.container(border=True):
+        col_preview, col_info, col_acciones = st.columns([1, 2, 2])
+        with col_preview:
+            try:
+                st.image(_preview_cacheada(definicion, cuenta), use_container_width=True)
+            except Exception:
+                st.caption("Vista previa no disponible")
+        with col_info:
+            estrella = "★ " if es_predeterminada else ""
+            st.markdown(f"**{estrella}{definicion.nombre}**")
+            st.caption("Preestablecida" if es_preset else "Personalizada")
+        with col_acciones:
+            if es_predeterminada:
+                st.success("Predeterminada", icon="⭐")
+            else:
+                st.button(
+                    "Usar como predeterminada",
+                    key=f"pred_{definicion.id}",
+                    on_click=_marcar_predeterminada,
+                    args=(definicion.id,),
+                    use_container_width=True,
+                )
+            st.button(
+                "Duplicar",
+                key=f"dup_{definicion.id}",
+                on_click=_duplicar_plantilla,
+                args=(definicion,),
+                use_container_width=True,
+            )
+            if not es_preset:
+                st.button(
+                    "Editar",
+                    key=f"edit_{definicion.id}",
+                    on_click=_abrir_editor,
+                    args=(definicion.id, False),
+                    use_container_width=True,
+                )
+                _boton_eliminar(definicion)
+
+
+def _boton_eliminar(definicion: TemplateDefinition):
+    flag = f"confirmar_borrado_plantilla_{definicion.id}"
+    if not st.session_state.get(flag):
+        st.button(
+            "Eliminar",
+            key=f"del_{definicion.id}",
+            on_click=_set_flag,
+            args=(flag, True),
+            use_container_width=True,
+        )
+        return
+    st.warning(f"¿Eliminar «{definicion.nombre}»? No se puede deshacer.")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.button(
+            "Sí, eliminar",
+            key=f"delok_{definicion.id}",
+            type="primary",
+            on_click=_eliminar_plantilla,
+            args=(definicion.id, flag),
+            use_container_width=True,
+        )
+    with c2:
+        st.button(
+            "Cancelar",
+            key=f"delcancel_{definicion.id}",
+            on_click=_set_flag,
+            args=(flag, False),
+            use_container_width=True,
+        )
+
+
+# ----------------------------------------------------------------------
+# Callbacks de la biblioteca (siempre `on_click=`, nunca dentro de un
+# `if st.button(...):` — ver nota de módulo).
+# ----------------------------------------------------------------------
+def _set_flag(clave: str, valor: bool):
+    st.session_state[clave] = valor
+
+
+def _marcar_predeterminada(id_: str):
+    actualizar_cuenta({"plantilla_predeterminada_id": id_})
+
+
+def _duplicar_plantilla(definicion: TemplateDefinition):
+    copia = definicion.clonar(f"Copia de {definicion.nombre}")
+    crear_plantilla(copia.id, copia.nombre, copia.base_id, copia.to_json())
+    _abrir_editor(copia.id, False)
+
+
+def _crear_desde_preset():
+    id_preset = st.session_state.get("nueva_plantilla_base") or PRESET_POR_DEFECTO
+    _duplicar_plantilla(obtener_preset(id_preset))
+
+
+def _eliminar_plantilla(id_: str, flag: str):
+    borrar_plantilla(id_)
+    st.session_state[flag] = False
+
+
+def _abrir_editor(id_: str, es_preset: bool):
+    definicion = (
+        obtener_preset(id_)
+        if es_preset
+        else TemplateDefinition.from_json(obtener_plantilla(id_)["definicion_json"])
+    )
+    _seed_editor_state(id_, definicion)
+
+
+def _cerrar_editor():
+    st.session_state["plantillas_editando_id"] = None
+
+
+def _guardar_plantilla(id_: str, base_id: str | None):
+    definicion = _construir_definicion_desde_widgets(id_, base_id)
+    validar_plantilla(definicion)
+    actualizar_plantilla(id_, nombre=definicion.nombre, definicion_json=definicion.to_json())
+    st.session_state["plantillas_editando_id"] = None
+    st.session_state["plantillas_guardado_ok"] = True
+
+
+def _mover_seccion(id_: str, tipo: str, direccion: int):
+    clave = f"pe_{id_}_orden"
+    orden = st.session_state.get(clave, [])
+    i = orden.index(tipo)
+    j = i + direccion
+    if 0 <= j < len(orden):
+        orden[i], orden[j] = orden[j], orden[i]
+    st.session_state[clave] = orden
+
+
+# ----------------------------------------------------------------------
+# Editor
+# ----------------------------------------------------------------------
+def _seed_editor_state(id_: str, definicion: TemplateDefinition):
+    """Precarga en `session_state` un valor por cada widget del editor,
+    ANTES de que esos widgets se rendericen (esta función solo se llama
+    desde `on_click=`) — mutar las claves de widgets ya renderizados en el
+    mismo paso de script lanzaría `StreamlitAPIException`."""
+    st.session_state["plantillas_editando_id"] = id_
+    p = f"pe_{id_}_"
+    st.session_state[p + "nombre"] = definicion.nombre
+    st.session_state[p + "cp_heredar"] = definicion.tema.color_primario is None
+    st.session_state[p + "cp"] = definicion.tema.color_primario or "#2563EB"
+    st.session_state[p + "cs_heredar"] = definicion.tema.color_secundario is None
+    st.session_state[p + "cs"] = definicion.tema.color_secundario or "#1E3A8A"
+    st.session_state[p + "fuente"] = definicion.tema.fuente_id
+    st.session_state[p + "tam_base"] = float(definicion.tema.tamano_base_pt)
+    st.session_state[p + "alin_titulos"] = definicion.tema.alineacion_titulos
+    st.session_state[p + "pag_tam"] = definicion.pagina.tamano
+    st.session_state[p + "pag_orient"] = definicion.pagina.orientacion
+    st.session_state[p + "mS"] = float(definicion.pagina.margen_sup_cm)
+    st.session_state[p + "mI"] = float(definicion.pagina.margen_inf_cm)
+    st.session_state[p + "mIz"] = float(definicion.pagina.margen_izq_cm)
+    st.session_state[p + "mD"] = float(definicion.pagina.margen_der_cm)
+    st.session_state[p + "logo_mostrar"] = definicion.encabezado.mostrar_logo
+    st.session_state[p + "logo_alto"] = float(definicion.encabezado.logo_alto_cm)
+    st.session_state[p + "logo_pos"] = definicion.encabezado.logo_posicion
+    st.session_state[p + "enc_linea"] = definicion.encabezado.mostrar_linea_separadora
+    st.session_state[p + "pie_linea"] = definicion.pie.mostrar_linea_separadora
+    st.session_state[p + "orden"] = [s.tipo for s in definicion.secciones]
+    for s in definicion.secciones:
+        st.session_state[p + f"vis_{s.tipo}"] = s.visible
+    layout_servicios = next(
+        (s.opciones.get("layout", "text") for s in definicion.secciones if s.tipo == "servicios"),
+        "text",
+    )
+    st.session_state[p + "serv_layout"] = layout_servicios
+
+
+def _construir_definicion_desde_widgets(id_: str, base_id: str | None) -> TemplateDefinition:
+    """Lee los valores actuales de los widgets del editor (ya en
+    `session_state` por su propio `key=`) y arma una `TemplateDefinition`
+    — usada tanto para la vista previa en vivo (en cada rerun) como al
+    guardar."""
+    p = f"pe_{id_}_"
+    ss = st.session_state
+    orden = ss.get(p + "orden", [])
+    secciones = []
+    for tipo in orden:
+        opciones = {}
+        if tipo == "servicios":
+            opciones["layout"] = ss.get(p + "serv_layout", "text")
+        secciones.append(
+            SeccionConfig(
+                tipo=tipo, visible=bool(ss.get(p + f"vis_{tipo}", True)), opciones=opciones
+            )
+        )
+    return TemplateDefinition(
+        id=id_,
+        nombre=(ss.get(p + "nombre") or "Sin nombre").strip() or "Sin nombre",
+        tipo="custom",
+        base_id=base_id,
+        pagina=PaginaConfig(
+            tamano=ss.get(p + "pag_tam", "A4"),
+            orientacion=ss.get(p + "pag_orient", "vertical"),
+            margen_sup_cm=ss.get(p + "mS", 3.1),
+            margen_inf_cm=ss.get(p + "mI", 2.9),
+            margen_izq_cm=ss.get(p + "mIz", 2.2),
+            margen_der_cm=ss.get(p + "mD", 2.2),
+        ),
+        tema=TemaConfig(
+            color_primario=None if ss.get(p + "cp_heredar", True) else ss.get(p + "cp"),
+            color_secundario=None if ss.get(p + "cs_heredar", True) else ss.get(p + "cs"),
+            fuente_id=ss.get(p + "fuente", "helvetica"),
+            tamano_base_pt=ss.get(p + "tam_base", 10.5),
+            peso_titulos="bold",
+            alineacion_titulos=ss.get(p + "alin_titulos", "centro"),
+        ),
+        encabezado=EncabezadoConfig(
+            mostrar_logo=ss.get(p + "logo_mostrar", True),
+            logo_alto_cm=ss.get(p + "logo_alto", 2.0),
+            logo_posicion=ss.get(p + "logo_pos", "izquierda"),
+            mostrar_linea_separadora=ss.get(p + "enc_linea", True),
+        ),
+        pie=PieConfig(mostrar_linea_separadora=ss.get(p + "pie_linea", True)),
+        secciones=secciones,
+    )
+
+
+def _render_editor(cuenta: dict):
+    id_ = st.session_state["plantillas_editando_id"]
+    fila = obtener_plantilla(id_)
+    if not fila:
+        st.warning("Esta plantilla ya no existe (puede que se haya eliminado en otra pestaña).")
+        st.button("← Volver a la biblioteca", on_click=_cerrar_editor)
+        return
+    base_id = fila["base_id"]
+    p = f"pe_{id_}_"
+
+    col_izq, col_der = st.columns([3, 2])
+
+    with col_izq:
+        st.text_input("Nombre de la plantilla", key=p + "nombre")
+
+        with st.expander("Tema", expanded=True):
+            c1, c2 = st.columns(2)
+            with c1:
+                st.checkbox("Usar el color primario de la cuenta", key=p + "cp_heredar")
+                if not st.session_state[p + "cp_heredar"]:
+                    st.color_picker("Color primario", key=p + "cp")
+            with c2:
+                st.checkbox("Usar el color secundario de la cuenta", key=p + "cs_heredar")
+                if not st.session_state[p + "cs_heredar"]:
+                    st.color_picker("Color secundario", key=p + "cs")
+            st.selectbox(
+                "Tipografía",
+                options=list(FUENTES_CATALOGO.keys()),
+                format_func=lambda k: FUENTES_CATALOGO[k]["etiqueta"],
+                key=p + "fuente",
+            )
+            st.slider(
+                "Tamaño de letra base (pt)",
+                TAMANO_FUENTE_MIN_PT,
+                TAMANO_FUENTE_MAX_PT,
+                key=p + "tam_base",
+                step=0.5,
+            )
+            st.selectbox(
+                "Alineación de títulos",
+                options=list(ALINEACIONES),
+                format_func=lambda a: _ETIQUETAS_ALINEACION.get(a, a),
+                key=p + "alin_titulos",
+            )
+
+        with st.expander("Página"):
+            c1, c2 = st.columns(2)
+            with c1:
+                st.selectbox("Tamaño", options=list(TAMANOS_PAGINA), key=p + "pag_tam")
+            with c2:
+                st.selectbox(
+                    "Orientación",
+                    options=list(ORIENTACIONES),
+                    format_func=lambda o: _ETIQUETAS_ORIENTACION.get(o, o),
+                    key=p + "pag_orient",
+                )
+            c3, c4 = st.columns(2)
+            with c3:
+                st.number_input(
+                    "Margen superior (cm)", MARGEN_MIN_CM, MARGEN_MAX_CM, key=p + "mS", step=0.1
+                )
+                st.number_input(
+                    "Margen izquierdo (cm)", MARGEN_MIN_CM, MARGEN_MAX_CM, key=p + "mIz", step=0.1
+                )
+            with c4:
+                st.number_input(
+                    "Margen inferior (cm)", MARGEN_MIN_CM, MARGEN_MAX_CM, key=p + "mI", step=0.1
+                )
+                st.number_input(
+                    "Margen derecho (cm)", MARGEN_MIN_CM, MARGEN_MAX_CM, key=p + "mD", step=0.1
+                )
+
+        with st.expander("Encabezado y pie"):
+            st.checkbox("Mostrar logo", key=p + "logo_mostrar")
+            if st.session_state[p + "logo_mostrar"]:
+                st.slider(
+                    "Tamaño del logo (cm)",
+                    LOGO_ALTO_MIN_CM,
+                    LOGO_ALTO_MAX_CM,
+                    key=p + "logo_alto",
+                    step=0.1,
+                )
+                st.selectbox(
+                    "Posición del logo",
+                    options=list(POSICIONES_LOGO),
+                    format_func=lambda pos: _ETIQUETAS_POSICION_LOGO.get(pos, pos),
+                    key=p + "logo_pos",
+                )
+            st.checkbox("Línea separadora bajo el encabezado", key=p + "enc_linea")
+            st.checkbox("Línea separadora sobre el pie de página", key=p + "pie_linea")
+
+        with st.expander("Estructura (orden y secciones)", expanded=True):
+            st.caption(
+                "Activa o desactiva secciones y cambia su orden con las flechas. "
+                "Las marcadas como obligatorias no se pueden ocultar."
+            )
+            orden = st.session_state[p + "orden"]
+            for i, tipo in enumerate(orden):
+                bloqueada = tipo in SECCIONES_BLOQUEADAS
+                c_check, c_up, c_down = st.columns([5, 1, 1])
+                with c_check:
+                    if bloqueada:
+                        st.checkbox(
+                            f"{ETIQUETAS_SECCION.get(tipo, tipo)} (obligatoria)",
+                            value=True,
+                            disabled=True,
+                            key=p + f"vis_disp_{tipo}",
+                        )
+                        st.session_state[p + f"vis_{tipo}"] = True
+                    else:
+                        st.checkbox(ETIQUETAS_SECCION.get(tipo, tipo), key=p + f"vis_{tipo}")
+                with c_up:
+                    st.button(
+                        "▲",
+                        key=p + f"up_{tipo}",
+                        disabled=(i == 0),
+                        on_click=_mover_seccion,
+                        args=(id_, tipo, -1),
+                        use_container_width=True,
+                    )
+                with c_down:
+                    st.button(
+                        "▼",
+                        key=p + f"down_{tipo}",
+                        disabled=(i == len(orden) - 1),
+                        on_click=_mover_seccion,
+                        args=(id_, tipo, 1),
+                        use_container_width=True,
+                    )
+                if tipo == "servicios":
+                    st.selectbox(
+                        "Cómo mostrar los servicios incluidos",
+                        options=list(LAYOUTS_SERVICIOS),
+                        format_func=lambda layout: _ETIQUETAS_LAYOUT_SERVICIOS.get(layout, layout),
+                        key=p + "serv_layout",
+                    )
+
+        st.divider()
+        c_guardar, c_volver = st.columns(2)
+        with c_guardar:
+            st.button(
+                "💾 Guardar",
+                type="primary",
+                use_container_width=True,
+                on_click=_guardar_plantilla,
+                args=(id_, base_id),
+            )
+        with c_volver:
+            st.button("← Volver a la biblioteca", use_container_width=True, on_click=_cerrar_editor)
+
+    with col_der:
+        st.markdown("#### Vista previa")
+        definicion_actual = _construir_definicion_desde_widgets(id_, base_id)
+        avisos = validar_plantilla(definicion_actual)
+        for aviso in avisos:
+            st.warning(aviso)
+        try:
+            st.image(_preview_cacheada(definicion_actual, cuenta), use_container_width=True)
+        except Exception as e:
+            st.error(f"No se pudo generar la vista previa: {e}")

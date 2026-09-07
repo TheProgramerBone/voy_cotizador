@@ -12,10 +12,13 @@ datas = [("app.py", "."), ("assets", "assets"), ("quotetrip", "quotetrip")]
 binaries = []
 hiddenimports = []
 
-# El punto de entrada es desktop.py, que NO importa reportlab ni PIL
-# (esos los usa app.py, que va como dato). Por eso hay que recolectarlos
-# explícitamente, junto con Streamlit.
-for paquete in ("streamlit", "reportlab"):
+# El punto de entrada es desktop.py, que NO importa reportlab, PIL ni
+# pypdfium2 (esos los usa app.py, que va como dato). Por eso hay que
+# recolectarlos explícitamente, junto con Streamlit. pypdfium2 (motor de
+# rasterizado de la vista previa del editor de plantillas, quotetrip/pdf/
+# preview.py) trae un binario nativo de PDFium — collect_all asegura que
+# viaje empaquetado igual que reportlab.
+for paquete in ("streamlit", "reportlab", "pypdfium2"):
     try:
         d, b, h = collect_all(paquete)
         datas += d
@@ -31,7 +34,7 @@ hiddenimports += collect_submodules("reportlab")
 # Metadata que Streamlit y compañía consultan por importlib.metadata
 for paquete in ("streamlit", "click", "rich", "packaging", "protobuf",
                 "tornado", "watchdog", "gitpython", "blinker", "cachetools",
-                "pillow", "reportlab", "pywebview"):
+                "pillow", "reportlab", "pywebview", "pypdfium2"):
     try:
         datas += copy_metadata(paquete)
     except Exception:

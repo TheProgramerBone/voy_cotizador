@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "id": "minimalista",
+  "nombre": "Minimalista",
+  "tipo": "preset",
+  "base_id": null,
+  "pagina": {
+    "tamano": "A4",
+    "orientacion": "vertical",
+    "margen_sup_cm": 3.4,
+    "margen_inf_cm": 3.0,
+    "margen_izq_cm": 2.6,
+    "margen_der_cm": 2.6
+  },
+  "tema": {
+    "color_primario": null,
+    "color_secundario": null,
+    "fuente_id": "helvetica",
+    "tamano_base_pt": 10.0,
+    "peso_titulos": "normal",
+    "alineacion_titulos": "izquierda"
+  },
+  "encabezado": {
+    "mostrar_logo": true,
+    "logo_alto_cm": 1.4,
+    "logo_posicion": "izquierda",
+    "lineas_derecha": ["razon_social"],
+    "mostrar_linea_separadora": false
+  },
+  "pie": {
+    "lineas": ["contacto"],
+    "mostrar_linea_separadora": false
+  },
+  "secciones": [
+    {"tipo": "fecha", "visible": true, "estilo": {"alineacion": "izquierda"}, "opciones": {}},
+    {"tipo": "titulo", "visible": true, "estilo": {"alineacion": "izquierda", "peso": "normal"}, "opciones": {}},
+    {"tipo": "etiqueta_opcion", "visible": true, "estilo": {"alineacion": "izquierda"}, "opciones": {}},
+    {"tipo": "pasajeros", "visible": true, "estilo": {"alineacion": "izquierda"}, "opciones": {}},
+    {"tipo": "hotel_fechas", "visible": true, "estilo": {"alineacion": "izquierda"}, "opciones": {}},
+    {"tipo": "precios", "visible": true, "estilo": {"alineacion": "izquierda"}, "opciones": {}},
+    {"tipo": "servicios", "visible": true, "estilo": {"alineacion": "izquierda"}, "opciones": {"layout": "text"}},
+    {"tipo": "nota_legal", "visible": true, "estilo": {}, "opciones": {}},
+    {"tipo": "firma", "visible": true, "estilo": {}, "opciones": {}},
+    {"tipo": "anexos", "visible": true, "estilo": {"alineacion": "izquierda"}, "opciones": {}}
+  ],
+  "creado_en": null,
+  "actualizado_en": null
+}

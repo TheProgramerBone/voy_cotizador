@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "id": "travel",
+  "nombre": "Travel",
+  "tipo": "preset",
+  "base_id": null,
+  "pagina": {
+    "tamano": "A4",
+    "orientacion": "vertical",
+    "margen_sup_cm": 3.0,
+    "margen_inf_cm": 2.8,
+    "margen_izq_cm": 2.2,
+    "margen_der_cm": 2.2
+  },
+  "tema": {
+    "color_primario": null,
+    "color_secundario": null,
+    "fuente_id": "helvetica",
+    "tamano_base_pt": 10.5,
+    "peso_titulos": "bold",
+    "alineacion_titulos": "centro"
+  },
+  "encabezado": {
+    "mostrar_logo": true,
+    "logo_alto_cm": 2.2,
+    "logo_posicion": "izquierda",
+    "lineas_derecha": ["razon_social", "nit", "rnt"],
+    "mostrar_linea_separadora": true
+  },
+  "pie": {
+    "lineas": ["ciudad", "telefonos", "contacto"],
+    "mostrar_linea_separadora": true
+  },
+  "secciones": [
+    {"tipo": "fecha", "visible": true, "estilo": {}, "opciones": {}},
+    {"tipo": "titulo", "visible": true, "estilo": {"tamano_pt": 16}, "opciones": {}},
+    {"tipo": "etiqueta_opcion", "visible": true, "estilo": {}, "opciones": {}},
+    {"tipo": "pasajeros", "visible": true, "estilo": {}, "opciones": {}},
+    {"tipo": "hotel_fechas", "visible": true, "estilo": {"tamano_pt": 11.5}, "opciones": {}},
+    {"tipo": "precios", "visible": true, "estilo": {}, "opciones": {}},
+    {"tipo": "servicios", "visible": true, "estilo": {}, "opciones": {"layout": "text"}},
+    {"tipo": "nota_legal", "visible": true, "estilo": {}, "opciones": {}},
+    {"tipo": "firma", "visible": true, "estilo": {}, "opciones": {}},
+    {"tipo": "anexos", "visible": true, "estilo": {"tamano_pt": 12.5}, "opciones": {}}
+  ],
+  "creado_en": null,
+  "actualizado_en": null
+}

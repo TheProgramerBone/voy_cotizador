@@ -50,6 +50,7 @@ def init_db():
         )
     _asegurar_columnas()
     _asegurar_tabla_cuenta()
+    _asegurar_tabla_plantillas()
 
 
 def _asegurar_columnas():
@@ -62,6 +63,13 @@ def _asegurar_columnas():
         # editarla/recotizar desde el historial. Las filas guardadas antes de
         # esto quedan en NULL — se muestran como "no editables" en la UI.
         ("datos_json", "TEXT"),
+        # Sistema de plantillas PDF: qué plantilla se usó al exportar, más
+        # una copia congelada (snapshot) de su definición completa en ese
+        # momento, para que la cotización nunca cambie de aspecto aunque la
+        # plantilla se edite o se borre después. Filas anteriores a esto
+        # quedan en NULL (equivalen al preset "Clásica").
+        ("plantilla_id", "TEXT"),
+        ("plantilla_snapshot_json", "TEXT"),
     ]
     with _conectar() as con:
         existentes = {r[1] for r in con.execute("PRAGMA table_info(cotizaciones)")}
@@ -107,7 +115,13 @@ def _asegurar_tabla_cuenta():
 def _asegurar_columnas_cuenta():
     """Migración: agrega columnas nuevas a `cuenta` si ya existía sin ellas
     (mismo patrón que `_asegurar_columnas` para `cotizaciones`)."""
-    nuevas = [("sesion_recordada", "INTEGER DEFAULT 0")]
+    nuevas = [
+        ("sesion_recordada", "INTEGER DEFAULT 0"),
+        # Sistema de plantillas PDF: qué plantilla usar por defecto al
+        # exportar. NULL = usar el preset "Clásica" (no requiere fila en
+        # `plantillas`, ver `_asegurar_tabla_plantillas`).
+        ("plantilla_predeterminada_id", "TEXT"),
+    ]
     with _conectar() as con:
         existentes = {r[1] for r in con.execute("PRAGMA table_info(cuenta)")}
         for col, tipo in nuevas:
@@ -116,14 +130,104 @@ def _asegurar_columnas_cuenta():
 
 
 # ----------------------------------------------------------------------
+# Plantillas de PDF (personalizadas; las preestablecidas viven en código,
+# ver quotetrip/pdf/presets/). Una sola instalación = una sola cuenta, así
+# que (igual que `cotizaciones`/`cuenta`) esta tabla NO lleva columna de
+# agencia/tenant — la fila pertenece implícitamente a la única cuenta de
+# esta base de datos.
+# ----------------------------------------------------------------------
+def _asegurar_tabla_plantillas():
+    with _conectar() as con:
+        con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS plantillas (
+                id               TEXT PRIMARY KEY,
+                nombre           TEXT NOT NULL,
+                tipo             TEXT NOT NULL DEFAULT 'custom',
+                base_id          TEXT,
+                definicion_json  TEXT NOT NULL,
+                creado_en        TEXT,
+                actualizado_en   TEXT
+            )
+            """
+        )
+
+
+def crear_plantilla(id_: str, nombre: str, base_id: str | None, definicion_json: str):
+    ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with _conectar() as con:
+        con.execute(
+            """INSERT INTO plantillas
+                   (id, nombre, tipo, base_id, definicion_json, creado_en, actualizado_en)
+               VALUES (?, ?, 'custom', ?, ?, ?, ?)""",
+            (id_, nombre, base_id, definicion_json, ahora, ahora),
+        )
+
+
+def obtener_plantillas() -> list[dict]:
+    """Todas las plantillas personalizadas guardadas (las preestablecidas
+    no están en la BD, ver `quotetrip.pdf.presets`)."""
+    with _conectar() as con:
+        con.row_factory = sqlite3.Row
+        filas = con.execute("SELECT * FROM plantillas ORDER BY nombre COLLATE NOCASE").fetchall()
+    return [dict(f) for f in filas]
+
+
+def obtener_plantilla(id_: str) -> dict | None:
+    with _conectar() as con:
+        con.row_factory = sqlite3.Row
+        fila = con.execute("SELECT * FROM plantillas WHERE id = ?", (id_,)).fetchone()
+    return dict(fila) if fila else None
+
+
+def actualizar_plantilla(id_: str, nombre: str | None = None, definicion_json: str | None = None):
+    """Actualiza en el sitio (misma fila/id): así una plantilla custom se
+    edita sin generar historial de versiones — la trazabilidad de qué se
+    usó en cada cotización viene de `cotizaciones.plantilla_snapshot_json`,
+    no de versionar esta tabla."""
+    campos = {"actualizado_en": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+    if nombre is not None:
+        campos["nombre"] = nombre
+    if definicion_json is not None:
+        campos["definicion_json"] = definicion_json
+    columnas = ", ".join(f"{c} = ?" for c in campos)
+    with _conectar() as con:
+        con.execute(f"UPDATE plantillas SET {columnas} WHERE id = ?", [*campos.values(), id_])
+
+
+def borrar_plantilla(id_: str):
+    """Borra la plantilla y, si era la predeterminada de la cuenta, resetea
+    esa columna a NULL (vuelve a caer al preset "Clásica") en la misma
+    transacción — nunca debe quedar `plantilla_predeterminada_id` apuntando
+    a una fila inexistente."""
+    with _conectar() as con:
+        con.execute("DELETE FROM plantillas WHERE id = ?", (id_,))
+        con.execute(
+            "UPDATE cuenta SET plantilla_predeterminada_id = NULL "
+            "WHERE plantilla_predeterminada_id = ?",
+            (id_,),
+        )
+
+
+# ----------------------------------------------------------------------
 # Historial de cotizaciones
 # ----------------------------------------------------------------------
-def guardar_cotizacion(cliente, fecha_txt, num_opciones, hoteles, valor_desde, datos_json=None):
+def guardar_cotizacion(
+    cliente,
+    fecha_txt,
+    num_opciones,
+    hoteles,
+    valor_desde,
+    datos_json=None,
+    plantilla_id=None,
+    plantilla_snapshot_json=None,
+):
     with _conectar() as con:
         con.execute(
             """INSERT INTO cotizaciones
-                   (cliente, fecha_cotiz, num_opciones, hoteles, valor_desde, creado_en, datos_json)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                   (cliente, fecha_cotiz, num_opciones, hoteles, valor_desde, creado_en,
+                    datos_json, plantilla_id, plantilla_snapshot_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 cliente,
                 fecha_txt,
@@ -132,6 +236,8 @@ def guardar_cotizacion(cliente, fecha_txt, num_opciones, hoteles, valor_desde, d
                 int(valor_desde),
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 datos_json,
+                plantilla_id,
+                plantilla_snapshot_json,
             ),
         )
 

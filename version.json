@@ -1,5 +1,5 @@
 {
-  "version": "1.1.0",
-  "url": "https://github.com/TheProgramerBone/voy_cotizador/releases/latest/download/VoyCotizador-Setup.exe",
-  "notas": "Comisiones por servicio, valor por pasajero y correcciones."
+  "version": "1.2.0",
+  "url": "https://github.com/TheProgramerBone/voy_cotizador/releases/latest/download/QuoteTrip-Setup.exe",
+  "notas": "Nuevo sistema de plantillas de PDF: 5 diseños preestablecidos (Clásica, Profesional, Minimalista, Premium, Travel), plantillas personalizadas con editor visual y vista previa en vivo, y plantilla predeterminada por cuenta."
 }

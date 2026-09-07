@@ -1,2 +1,4 @@
-# Dependencias de desarrollo (lint)
+# Dependencias de desarrollo (lint + tests)
 ruff>=0.6
+pytest>=8
+pypdf>=5  # solo para tests: leer páginas/texto de los PDF generados

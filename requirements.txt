@@ -1,3 +1,8 @@
 streamlit>=1.33
 reportlab>=4.0
 pillow>=10.0
+# Rasteriza el PDF de muestra a PNG para la vista previa en vivo del editor
+# de plantillas (quotetrip/pdf/preview.py). Apache-2.0/BSD (bindings de
+# PDFium) — se prefiere sobre PyMuPDF, que es AGPL-3.0 y por tanto un
+# riesgo de licencia para un producto comercial de código cerrado.
+pypdfium2>=4

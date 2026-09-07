@@ -28,6 +28,7 @@ from quotetrip.config import (
 )
 from quotetrip.cotizacion_ui import render_tab_cotizacion, render_tab_historial
 from quotetrip.db import init_db, obtener_cuenta
+from quotetrip.plantillas_ui import render_tab_plantillas
 
 st.set_page_config(page_title=f"{PRODUCTO_NOMBRE} · Cotizaciones", page_icon="✈️", layout="wide")
 init_db()
@@ -171,7 +172,9 @@ st.markdown(
 
 st.markdown("## Generador de Cotizaciones")
 
-tab_cotiz, tab_hist, tab_ayuda = st.tabs(["📝  Cotización", "📁  Historial", "❓  Ayuda"])
+tab_cotiz, tab_hist, tab_plant, tab_ayuda = st.tabs(
+    ["📝  Cotización", "📁  Historial", "🎨  Plantillas", "❓  Ayuda"]
+)
 
 # ----------------------------------------------------------------------
 # TAB · COTIZACIÓN
@@ -184,6 +187,12 @@ with tab_cotiz:
 # ----------------------------------------------------------------------
 with tab_hist:
     render_tab_historial()
+
+# ----------------------------------------------------------------------
+# TAB · PLANTILLAS
+# ----------------------------------------------------------------------
+with tab_plant:
+    render_tab_plantillas(cuenta)
 
 # ----------------------------------------------------------------------
 # TAB · AYUDA

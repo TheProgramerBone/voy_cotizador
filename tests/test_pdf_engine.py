@@ -1,0 +1,151 @@
+# -*- coding: utf-8 -*-
+"""Motor de render de plantillas — Fase 2 del sistema de plantillas PDF.
+
+Cubre: los 5 presets generan PDF válido, una plantilla personalizada con
+secciones ocultas/reordenadas funciona, cotizaciones largas (varias
+páginas) no rompen, el layout de tabla de servicios funciona, y la firma
+histórica sin `template` (regresión) sigue funcionando."""
+
+import io
+
+from pypdf import PdfReader
+
+from quotetrip.pdf import construir_pdf
+from quotetrip.pdf.engine.renderer import renderizar_plantilla
+from quotetrip.pdf.models import SeccionConfig, TemplateDefinition, validar_plantilla
+from quotetrip.pdf.presets import listar_presets, obtener_preset
+
+
+def _texto(pdf_bytes: bytes) -> str:
+    lector = PdfReader(io.BytesIO(pdf_bytes))
+    return " ".join(" ".join((p.extract_text() or "").split()) for p in lector.pages)
+
+
+def test_construir_pdf_sin_template_usa_clasica(glob_de_prueba, opcion_de_prueba):
+    """Regresión: la firma histórica exacta de `cotizacion_ui.py:415` (sin
+    argumento `template`) debe seguir funcionando tal cual."""
+    pdf_bytes = construir_pdf(glob_de_prueba, [opcion_de_prueba()])
+    assert pdf_bytes[:5] == b"%PDF-"
+
+
+def test_todos_los_presets_generan_pdf_valido(glob_de_prueba, opcion_de_prueba):
+    opciones = [opcion_de_prueba()]
+    for preset in listar_presets():
+        pdf_bytes = renderizar_plantilla(preset, glob_de_prueba, opciones)
+        assert pdf_bytes[:5] == b"%PDF-", f"preset {preset.id} no generó un PDF válido"
+        assert len(PdfReader(io.BytesIO(pdf_bytes)).pages) == 1
+
+
+def test_preset_profesional_usa_tabla_de_servicios(glob_de_prueba, opcion_de_prueba):
+    """El preset "Profesional" usa `layout: "table"` para servicios — debe
+    incluir las descripciones de los servicios en el texto extraído
+    (misma fuente de datos que el modo texto, solo cambia la presentación)."""
+    profesional = obtener_preset("profesional")
+    pdf_bytes = renderizar_plantilla(profesional, glob_de_prueba, [opcion_de_prueba()])
+    texto = _texto(pdf_bytes)
+    assert "Vuelos ida y vuelta" in texto
+    assert "Traslados aeropuerto-hotel" in texto
+
+
+def test_varias_opciones_generan_varias_paginas(glob_de_prueba, opcion_de_prueba):
+    opciones = [
+        opcion_de_prueba("Plan A", "Hotel Caribe", 2, 0, False),
+        opcion_de_prueba("Plan B", "Hotel Decameron", 2, 1, True),
+        opcion_de_prueba("Plan C", "Hotel Zuana", 4, 2, False),
+    ]
+    pdf_bytes = construir_pdf(glob_de_prueba, opciones)
+    assert len(PdfReader(io.BytesIO(pdf_bytes)).pages) == 3
+
+
+def test_cotizacion_larga_no_rompe(glob_de_prueba, opcion_de_prueba):
+    """Una opción con una lista de servicios/inclusiones larga (texto que
+    puede desbordar una página) debe seguir generando un PDF válido —
+    Platypus reparte el contenido en más páginas automáticamente."""
+    op = opcion_de_prueba()
+    op["incluye"] = "Incluye: " + " + ".join(f"Servicio adicional número {i}" for i in range(80))
+    pdf_bytes = construir_pdf(glob_de_prueba, [op])
+    assert pdf_bytes[:5] == b"%PDF-"
+    assert len(PdfReader(io.BytesIO(pdf_bytes)).pages) >= 1
+
+
+def test_plantilla_custom_seccion_oculta_no_aparece(glob_de_prueba, opcion_de_prueba):
+    base = obtener_preset("clasica")
+    data = base.to_dict()
+    for s in data["secciones"]:
+        if s["tipo"] == "firma":
+            s["visible"] = False
+    custom = TemplateDefinition.from_dict(data)
+    validar_plantilla(custom)  # "firma" no está bloqueada, debe respetarse
+
+    pdf_bytes = renderizar_plantilla(custom, glob_de_prueba, [opcion_de_prueba()])
+    texto = _texto(pdf_bytes)
+    assert "Cordialmente" not in texto
+
+
+def test_plantilla_custom_no_puede_ocultar_seccion_bloqueada(glob_de_prueba, opcion_de_prueba):
+    """Aunque el JSON de la plantilla diga `visible: false` para una
+    sección bloqueada (p.ej. la nota legal), `validar_plantilla()` la
+    fuerza visible antes de renderizar — nunca debe poder generarse un PDF
+    sin la cláusula legal."""
+    base = obtener_preset("clasica")
+    data = base.to_dict()
+    for s in data["secciones"]:
+        if s["tipo"] == "nota_legal":
+            s["visible"] = False
+    custom = TemplateDefinition.from_dict(data)
+    validar_plantilla(custom)
+
+    pdf_bytes = renderizar_plantilla(custom, glob_de_prueba, [opcion_de_prueba()])
+    texto = _texto(pdf_bytes)
+    assert "679" in texto  # referencia a la ley 679/2001 en NOTA_Y_LEGAL
+
+
+def test_plantilla_custom_reordenada(glob_de_prueba, opcion_de_prueba):
+    """Cambiar el orden de las secciones cambia el orden del contenido —
+    el modelo confía en el orden de la lista, sin un campo `orden` aparte."""
+    base = obtener_preset("clasica")
+    custom = TemplateDefinition.from_dict(base.to_dict())
+    # Mueve "servicios" al principio de la lista.
+    servicios = next(s for s in custom.secciones if s.tipo == "servicios")
+    custom.secciones.remove(servicios)
+    custom.secciones.insert(0, servicios)
+
+    pdf_bytes = renderizar_plantilla(custom, glob_de_prueba, [opcion_de_prueba()])
+    texto = _texto(pdf_bytes)
+    # "Incluye:" (texto de servicios) debe aparecer antes que "COTIZACIÓN"
+    # (título) en el texto extraído, si el reordenamiento se respetó.
+    assert texto.index("Incluye") < texto.index("COTIZACIÓN")
+
+
+def test_plantilla_sin_lista_servicios_cruda_cae_a_texto(glob_de_prueba, opcion_de_prueba):
+    """Si se pide layout de tabla pero la opción no trae la lista
+    `servicios` cruda (cotizaciones/plantillas de antes de la Fase 5),
+    debe degradar a texto en vez de romper."""
+    profesional = obtener_preset("profesional")
+    op = opcion_de_prueba(con_servicios_crudos=False)
+    pdf_bytes = renderizar_plantilla(profesional, glob_de_prueba, [op])
+    assert pdf_bytes[:5] == b"%PDF-"
+    assert "Incluye" in _texto(pdf_bytes)
+
+
+def test_pagina_carta_y_horizontal_no_rompen(glob_de_prueba, opcion_de_prueba):
+    base = obtener_preset("clasica")
+    data = base.to_dict()
+    data["id"] = "t_carta"
+    data["pagina"]["tamano"] = "Carta"
+    data["pagina"]["orientacion"] = "horizontal"
+    custom = TemplateDefinition.from_dict(data)
+    pdf_bytes = renderizar_plantilla(custom, glob_de_prueba, [opcion_de_prueba()])
+    assert pdf_bytes[:5] == b"%PDF-"
+
+
+def test_plantilla_sin_secciones_se_autocompleta_con_bloqueadas(glob_de_prueba, opcion_de_prueba):
+    custom = TemplateDefinition(id="vacia", nombre="Vacía", tipo="custom", secciones=[])
+    validar_plantilla(custom)
+    pdf_bytes = renderizar_plantilla(custom, glob_de_prueba, [opcion_de_prueba()])
+    assert pdf_bytes[:5] == b"%PDF-"
+
+
+def test_seccion_config_opciones_layout_por_defecto_es_texto():
+    s = SeccionConfig(tipo="servicios")
+    assert s.opciones.get("layout", "text") == "text"

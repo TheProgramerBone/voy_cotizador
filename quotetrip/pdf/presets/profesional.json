@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "id": "profesional",
+  "nombre": "Profesional",
+  "tipo": "preset",
+  "base_id": null,
+  "pagina": {
+    "tamano": "A4",
+    "orientacion": "vertical",
+    "margen_sup_cm": 2.6,
+    "margen_inf_cm": 2.4,
+    "margen_izq_cm": 2.0,
+    "margen_der_cm": 2.0
+  },
+  "tema": {
+    "color_primario": null,
+    "color_secundario": null,
+    "fuente_id": "times",
+    "tamano_base_pt": 10.5,
+    "peso_titulos": "bold",
+    "alineacion_titulos": "izquierda"
+  },
+  "encabezado": {
+    "mostrar_logo": true,
+    "logo_alto_cm": 1.8,
+    "logo_posicion": "izquierda",
+    "lineas_derecha": ["razon_social", "nit", "rnt"],
+    "mostrar_linea_separadora": true
+  },
+  "pie": {
+    "lineas": ["ciudad", "telefonos", "contacto"],
+    "mostrar_linea_separadora": true
+  },
+  "secciones": [
+    {"tipo": "fecha", "visible": true, "estilo": {"alineacion": "izquierda"}, "opciones": {}},
+    {"tipo": "titulo", "visible": true, "estilo": {}, "opciones": {}},
+    {"tipo": "etiqueta_opcion", "visible": true, "estilo": {}, "opciones": {}},
+    {"tipo": "pasajeros", "visible": true, "estilo": {"alineacion": "izquierda"}, "opciones": {}},
+    {"tipo": "hotel_fechas", "visible": true, "estilo": {"alineacion": "izquierda"}, "opciones": {}},
+    {"tipo": "precios", "visible": true, "estilo": {}, "opciones": {}},
+    {"tipo": "servicios", "visible": true, "estilo": {}, "opciones": {"layout": "table"}},
+    {"tipo": "nota_legal", "visible": true, "estilo": {}, "opciones": {}},
+    {"tipo": "firma", "visible": true, "estilo": {}, "opciones": {}},
+    {"tipo": "anexos", "visible": true, "estilo": {}, "opciones": {}}
+  ],
+  "creado_en": null,
+  "actualizado_en": null
+}

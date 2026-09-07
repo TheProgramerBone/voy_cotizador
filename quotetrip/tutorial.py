@@ -32,9 +32,29 @@ PASOS = [
         "logo y colores, y queda guardado en el historial.",
     ),
     (
-        "4. Historial",
+        "4. Elige el diseño de tu PDF",
+        "Justo antes de exportar puedes elegir qué **plantilla** usar: «Clásica» "
+        "es el diseño de siempre, y hay otras preestablecidas (Profesional, "
+        "Minimalista, Premium, Travel) con estilos distintos. Si no eliges "
+        "ninguna, se usa la plantilla predeterminada de tu cuenta.",
+    ),
+    (
+        "5. Crea tu propia plantilla",
+        "¿Quieres que TODAS tus cotizaciones usen tu propio diseño? Ve a la "
+        "pestaña 🎨 Plantillas, duplica la que más se le parezca a lo que "
+        "buscas, y personalízala: colores, tipografía, logo, tamaño de página, "
+        "qué secciones mostrar y en qué orden — todo con vista previa en vivo. "
+        "Guarda los cambios y márcala como «predeterminada» con una sola vez. "
+        "Puedes tener varias plantillas (por ejemplo, una para Navidad) y elegir "
+        "cuál usar en cada cotización. Las cotizaciones que ya generaste no "
+        "cambian de aspecto aunque después edites o borres una plantilla — cada "
+        "PDF exportado conserva el diseño que tenía en ese momento.",
+    ),
+    (
+        "6. Historial",
         "En la pestaña Historial puedes ver, filtrar y descargar en CSV todas las "
-        "cotizaciones que has generado con esta cuenta.",
+        "cotizaciones que has generado con esta cuenta, junto con qué plantilla "
+        "usó cada una.",
     ),
 ]
 

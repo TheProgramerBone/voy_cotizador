@@ -3,7 +3,7 @@
 **Sí es posible, y ya está activo.** El mecanismo incluido funciona así:
 
 1. La app tiene una versión (`APP_VERSION` en `quotetrip/config.py`, hoy
-   `1.1.0`).
+   `1.2.0`).
 2. Al abrirse, consulta un archivo `version.json` publicado en internet
    (`UPDATE_URL` en `quotetrip/config.py`, ya apunta a
    `TheProgramerBone/voy_cotizador` en GitHub).

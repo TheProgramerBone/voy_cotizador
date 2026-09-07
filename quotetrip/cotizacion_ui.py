@@ -21,8 +21,10 @@ from .calculos import (
     texto_pasajeros,
 )
 from .config import CLAVES_COMPARTIBLES, INCLUSIONES, LOG_PATH, logger
-from .db import borrar_historial, guardar_cotizacion, obtener_historial
+from .db import borrar_historial, guardar_cotizacion, obtener_historial, obtener_plantilla
 from .pdf import construir_pdf
+from .pdf.presets import PRESET_POR_DEFECTO, es_preset, obtener_preset
+from .pdf.resolver import listar_plantillas_disponibles, resolver_plantilla
 
 
 def _bytes_lista(key):
@@ -99,6 +101,23 @@ def _leer_servicio(clave, etiqueta, desc_def, keyp):
         "comision": int(st.session_state.get(f"com_{keyp}", 0)),
         "base": "persona" if b.startswith("Por") else "total",
     }
+
+
+def _nombre_plantilla_historial(plantilla_id: str | None) -> str:
+    """Nombre a mostrar en el historial para el `plantilla_id` guardado en
+    una cotización. `None` = guardada antes de que existiera el sistema de
+    plantillas (usó el diseño que hoy es el preset "Clásica"). Si era una
+    plantilla personalizada que luego se borró, lo indica en vez de fallar
+    — el snapshot completo sigue en `plantilla_snapshot_json`, esto es
+    solo la etiqueta visible."""
+    if not plantilla_id:
+        return "Clásica (histórico)"
+    if es_preset(plantilla_id):
+        return obtener_preset(plantilla_id).nombre
+    fila = obtener_plantilla(plantilla_id)
+    if fila:
+        return fila["nombre"]
+    return "Personalizada (eliminada)"
 
 
 def render_tab_cotizacion(
@@ -298,6 +317,32 @@ def render_tab_cotizacion(
 
     st.divider()
 
+    # -------- Selector de plantilla de diseño --------
+    plantillas_disponibles = listar_plantillas_disponibles(cuenta)
+    ids_disponibles = [p.id for p in plantillas_disponibles]
+    predeterminada_id = cuenta.get("plantilla_predeterminada_id") or PRESET_POR_DEFECTO
+    if predeterminada_id not in ids_disponibles:
+        predeterminada_id = PRESET_POR_DEFECTO
+    kwargs_indice = (
+        {}
+        if "plantilla_exportar_id" in st.session_state
+        else {"index": ids_disponibles.index(predeterminada_id)}
+    )
+    st.selectbox(
+        "Plantilla de diseño",
+        options=ids_disponibles,
+        format_func=lambda id_: next(
+            (p.nombre for p in plantillas_disponibles if p.id == id_), id_
+        ),
+        key="plantilla_exportar_id",
+        help=(
+            "Se usa la plantilla predeterminada de tu cuenta automáticamente; "
+            "elige otra aquí solo para esta cotización. Personalízalas en la "
+            "pestaña 🎨 Plantillas."
+        ),
+        **kwargs_indice,
+    )
+
     # -------- Botón: generar y exportar --------
     if st.button("💾  Aplicar y Exportar", type="primary", use_container_width=True):
         if not cliente.strip():
@@ -374,6 +419,10 @@ def render_tab_cotizacion(
                             "pasajeros_txt": texto_pasajeros(adultos, menores),
                             "imgs_vuelos_bytes": imgs_vuelos,
                             "img_hotel_bytes": img_hotel,
+                            # Lista cruda de servicios (no solo el texto
+                            # "Incluye: ..." de `calc`) — habilita el layout
+                            # de tabla de servicios en el motor de plantillas.
+                            "servicios": servicios,
                             **calc,
                         }
                     )
@@ -412,7 +461,10 @@ def render_tab_cotizacion(
                         "firma_nombre": cuenta.get("firma_nombre") or "",
                         "firma_cargo": cuenta.get("firma_cargo") or "",
                     }
-                    pdf_bytes = construir_pdf(glob, opciones_pdf)
+                    plantilla = resolver_plantilla(
+                        cuenta, st.session_state.get("plantilla_exportar_id")
+                    )
+                    pdf_bytes = construir_pdf(glob, opciones_pdf, template=plantilla)
                     snapshot = {
                         "cliente": cliente.strip(),
                         "fecha_cotiz": fecha_cotiz.isoformat(),
@@ -429,6 +481,8 @@ def render_tab_cotizacion(
                         "; ".join(hoteles) if hoteles else "-",
                         min(valores_desde) if valores_desde else 0,
                         datos_json=json.dumps(snapshot),
+                        plantilla_id=plantilla.id,
+                        plantilla_snapshot_json=plantilla.to_json(),
                     )
                     st.session_state["pdf_bytes"] = pdf_bytes
                     st.session_state["pdf_nombre"] = (
@@ -579,7 +633,8 @@ def render_tab_historial():
                         f"**{f['fecha_cotiz']}** · {f.get('num_opciones') or 1} opción(es) · "
                         f"{f.get('hoteles') or '-'} · desde ${formato_cop(f.get('valor_desde') or 0)}"
                     )
-                    st.caption(f"Generada: {f['creado_en']}")
+                    nombre_plantilla = _nombre_plantilla_historial(f.get("plantilla_id"))
+                    st.caption(f"Generada: {f['creado_en']} · Plantilla: {nombre_plantilla}")
                 with c2:
                     if f.get("datos_json"):
                         # on_click (no `if st.button(...):`) — ver nota en
