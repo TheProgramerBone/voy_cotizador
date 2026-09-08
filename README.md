@@ -5,9 +5,7 @@ de Python" significa empaquetar Python de forma invisible. Aquí tienes dos
 caminos. Los archivos ya están incluidos:
 
 - `desktop.py` — abre la app en una **ventana nativa** (no en el navegador).
-- `VoyCotizador.spec`, `build_exe.bat` — para generar un `.exe` (el nombre del
-  archivo `.spec` quedó igual por costumbre; lo que genera ya se llama
-  `QuoteTrip.exe`).
+- `QuoteTrip.spec`, `build_exe.bat` — para generar un `.exe` (`QuoteTrip.exe`).
 - `QuoteTrip.bat` — lanzador para la versión con Python portable.
 - `requirements-desktop.txt` — dependencias extra (`pywebview`, `pyinstaller`).
 - `assets/logo.ico` — icono para el ejecutable / acceso directo (todavía es el
@@ -79,7 +77,7 @@ PyInstaller + Streamlit a veces necesita 1–2 ajustes.
    build_exe.bat
    ```
 
-   (equivale a `pyinstaller --noconfirm --clean VoyCotizador.spec`)
+   (equivale a `pyinstaller --noconfirm --clean QuoteTrip.spec`)
 3. El resultado queda en `dist\QuoteTrip\`. Reparte **toda** esa carpeta
    (es "one-folder", más estable que un único archivo para Streamlit).
 
@@ -87,7 +85,7 @@ PyInstaller + Streamlit a veces necesita 1–2 ajustes.
 Casi siempre es metadata o archivos estáticos que faltan. Prueba, en orden:
 
 - Reconstruye añadiendo el paquete que reclame el error al bloque
-  `collect_all` o `copy_metadata` dentro de `VoyCotizador.spec`.
+  `collect_all` o `copy_metadata` dentro de `QuoteTrip.spec`.
 - Ejecuta el `.exe` desde una consola (`cmd`) para ver el mensaje real.
 - Como diagnóstico, pon `console=True` en el `.spec` y reconstruye: verás los
   logs de arranque.

@@ -9,7 +9,7 @@ y hoy no hay ninguna fuente registrada en todo el proyecto
 añaden fuentes propias, este es el punto de extensión: registrar cada
 variante con `reportlab.pdfbase.pdfmetrics.registerFont(TTFont(...))` desde
 un archivo empaquetado bajo `quotetrip/pdf/engine/fonts/` (así viaja con el
-resto del paquete `quotetrip/` sin tocar `VoyCotizador.spec`) y añadir la
+resto del paquete `quotetrip/` sin tocar `QuoteTrip.spec`) y añadir la
 entrada correspondiente a `FUENTES_CATALOGO`."""
 
 from ..models.template import FUENTE_POR_DEFECTO, FUENTES_CATALOGO

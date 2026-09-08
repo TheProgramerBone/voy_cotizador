@@ -6,7 +6,7 @@ no cambia entre versiones normales, ver README Actualizaciones.md).
 
 Se zipea directo desde la raíz del repo (no desde dist\\QuoteTrip\\), porque
 son exactamente los mismos archivos que PyInstaller empaqueta como `datas`
-(VoyCotizador.spec) — no hace falta compilar el .exe para generar el parche.
+(QuoteTrip.spec) — no hace falta compilar el .exe para generar el parche.
 
 Uso:   python build_patch.py   (o doble clic en build_patch.bat)
 Salida: Output\\QuoteTrip-Patch.zip  +  Output\\QuoteTrip-Patch.sha256.txt

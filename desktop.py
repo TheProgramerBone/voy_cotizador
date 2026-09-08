@@ -26,7 +26,7 @@ TITULO = "QuoteTrip"
 
 # Versión de la lógica de "aplicar parche" de ESTE desktop.py. Un parche
 # nunca puede tocar este archivo (va compilado dentro del .exe, no como dato
-# suelto — ver VoyCotizador.spec), así que solo sube en un release COMPLETO.
+# suelto — ver QuoteTrip.spec), así que solo sube en un release COMPLETO.
 # self_update.desktop_soporta_parches() la compara contra
 # CAPACIDAD_PARCHE_REQUERIDA para decidir si un exe ya instalado sabe
 # aplicar el parche que ofrece version.json, o si haría falta reinstalar.

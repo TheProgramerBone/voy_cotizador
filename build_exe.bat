@@ -20,7 +20,7 @@ if errorlevel 1 (
 )
 
 REM --- Compilar ---
-"%PY%" -m PyInstaller --noconfirm --clean VoyCotizador.spec
+"%PY%" -m PyInstaller --noconfirm --clean QuoteTrip.spec
 
 echo.
 if exist "dist\QuoteTrip\QuoteTrip.exe" (

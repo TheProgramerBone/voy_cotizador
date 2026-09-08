@@ -2,7 +2,7 @@
 """Carga las plantillas preestablecidas ("presets") de QuoteTrip: viven
 como JSON en este mismo paquete (`quotetrip/pdf/presets/*.json`), viajan
 empaquetadas junto con el resto de `quotetrip/` sin necesitar ninguna
-entrada extra en `VoyCotizador.spec`, y nunca se guardan como fila en la
+entrada extra en `QuoteTrip.spec`, y nunca se guardan como fila en la
 tabla `plantillas` — son de solo lectura, iguales para toda instalación."""
 
 import json

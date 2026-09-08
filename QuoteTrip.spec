@@ -3,7 +3,7 @@
 # Spec de PyInstaller 6.x para QuoteTrip (Windows, carpeta única).
 # Genera dist/QuoteTrip/QuoteTrip.exe
 #
-# Construir con:   python -m PyInstaller --noconfirm --clean VoyCotizador.spec
+# Construir con:   python -m PyInstaller --noconfirm --clean QuoteTrip.spec
 # ---------------------------------------------------------------------------
 import os
 from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metadata

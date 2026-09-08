@@ -13,7 +13,7 @@ falta bajar de nuevo Python/Streamlit/reportlab/pywebview.
 1. La app tiene una versión (`APP_VERSION` en `quotetrip/config.py`, hoy
    `1.4.0`).
 2. Al abrirse, consulta `version.json` publicado en internet (`UPDATE_URL`
-   en `quotetrip/config.py`, apunta a `TheProgramerBone/voy_cotizador` en
+   en `quotetrip/config.py`, apunta a `TheProgramerBone/QuoteTrip` en
    GitHub).
 3. Si hay una versión más nueva y `"tipo": "parche"`, muestra un botón
    **"⬇️ Actualizar ahora"**. Al pulsarlo:
@@ -33,7 +33,7 @@ No hay instalador de por medio, ni SmartScreen, ni permisos de admin — solo
 
 Para cambios que sí tocan el runtime empaquetado (nueva versión de
 Streamlit/reportlab/pywebview/pypdfium2, nuevas dependencias, cambios en
-`VoyCotizador.spec`) el parche liviano **no alcanza** — hace falta el
+`QuoteTrip.spec`) el parche liviano **no alcanza** — hace falta el
 `Setup.exe` de siempre:
 
 1. Muestra el aviso **"Nueva versión disponible"** con un botón
@@ -50,11 +50,11 @@ Streamlit/reportlab/pywebview/pypdfium2, nuevas dependencias, cambios en
    - `quotetrip/config.py`  →  `APP_VERSION = "1.3.0"`
    - `installer.iss`  →  `#define MyAppVersion "1.3.0"`
 3. Decide si es **parche** o **completa** (ver arriba: ¿tocaste
-   dependencias/`VoyCotizador.spec`, o solo `app.py`/`quotetrip`/`assets`?).
+   dependencias/`QuoteTrip.spec`, o solo `app.py`/`quotetrip`/`assets`?).
 
    ⚠️ **Si tocaste `desktop.py`, tiene que ser completa.** `desktop.py` es el
    *entry point* que PyInstaller compila dentro del `.exe` (`Analysis`, en
-   `VoyCotizador.spec`) — a diferencia de `app.py`, no va como dato suelto,
+   `QuoteTrip.spec`) — a diferencia de `app.py`, no va como dato suelto,
    así que un parche **nunca** puede actualizarlo. Instalaciones existentes
    se quedan con el `desktop.py` (y por tanto la lógica de aplicar parches)
    de cuando se instalaron por última vez con el `Setup.exe`.
@@ -75,7 +75,7 @@ Streamlit/reportlab/pywebview/pypdfium2, nuevas dependencias, cambios en
 1. Genera el `.zip`:  `build_patch.bat`  →  `Output\QuoteTrip-Patch.zip`
    (imprime también el `sha256`, y lo deja en
    `Output\QuoteTrip-Patch.sha256.txt`).
-2. Crea un *release* en GitHub (`TheProgramerBone/voy_cotizador`) y sube
+2. Crea un *release* en GitHub (`TheProgramerBone/QuoteTrip`) y sube
    `QuoteTrip-Patch.zip`.
 3. Actualiza `version.json` (raíz del repo, rama `master`):
 
@@ -83,7 +83,7 @@ Streamlit/reportlab/pywebview/pypdfium2, nuevas dependencias, cambios en
    {
      "version": "1.3.0",
      "tipo": "parche",
-     "url": "https://github.com/TheProgramerBone/voy_cotizador/releases/latest/download/QuoteTrip-Patch.zip",
+     "url": "https://github.com/TheProgramerBone/QuoteTrip/releases/latest/download/QuoteTrip-Patch.zip",
      "sha256": "<el que imprimió build_patch.bat>",
      "notas": "Novedades de esta versión."
    }
@@ -99,7 +99,7 @@ Streamlit/reportlab/pywebview/pypdfium2, nuevas dependencias, cambios en
    {
      "version": "1.3.0",
      "tipo": "completo",
-     "url": "https://github.com/TheProgramerBone/voy_cotizador/releases/latest/download/QuoteTrip-Setup.exe",
+     "url": "https://github.com/TheProgramerBone/QuoteTrip/releases/latest/download/QuoteTrip-Setup.exe",
      "notas": "Novedades de esta versión."
    }
    ```

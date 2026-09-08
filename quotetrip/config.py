@@ -79,12 +79,12 @@ APP_VERSION = "1.4.0"
 # Para habilitar el aviso de actualización, apunta esta URL a un archivo
 # version.json publicado (por ejemplo en GitHub Releases). Déjalo vacío para
 # desactivar la comprobación. Ver "README Actualizaciones.md".
-UPDATE_URL = "https://raw.githubusercontent.com/TheProgramerBone/voy_cotizador/master/version.json"
+UPDATE_URL = "https://raw.githubusercontent.com/TheProgramerBone/QuoteTrip/master/version.json"
 # Fallback cuando hay un parche disponible pero este exe es de antes de que
 # existiera el mecanismo de auto-parcheo (ver self_update.desktop_soporta_parches):
 # no tiene sentido ofrecer el .zip del parche, así que se manda a la página de
 # releases para que baje el instalador completo manualmente.
-UPDATE_RELEASES_URL = "https://github.com/TheProgramerBone/voy_cotizador/releases/latest"
+UPDATE_RELEASES_URL = "https://github.com/TheProgramerBone/QuoteTrip/releases/latest"
 
 # --- Registro de errores (log) ---
 LOG_DIR = DATA_DIR / "logs"

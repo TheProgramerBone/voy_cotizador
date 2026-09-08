@@ -1,7 +1,7 @@
 {
   "version": "1.4.0",
   "tipo": "parche",
-  "url": "https://github.com/TheProgramerBone/voy_cotizador/releases/latest/download/QuoteTrip-Patch.zip",
+  "url": "https://github.com/TheProgramerBone/QuoteTrip/releases/latest/download/QuoteTrip-Patch.zip",
   "sha256": "9a1977e3a09d8249d9a4f2643594931695cc63b876648641b9f49311ac4bfd5a",
   "notas": "Editor de plantillas: elementos libres (texto, imágenes y formas) que puedes posicionar, redimensionar, rotar y ordenar en capas dentro de la página — ideal para sellos, franjas de color o mensajes promocionales en tu PDF."
 }
