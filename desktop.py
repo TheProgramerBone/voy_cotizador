@@ -13,7 +13,9 @@ PyInstaller.
 Uso en desarrollo:   python desktop.py
 """
 
+import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -22,11 +24,90 @@ from pathlib import Path
 
 TITULO = "QuoteTrip"
 
+# Versión de la lógica de "aplicar parche" de ESTE desktop.py. Un parche
+# nunca puede tocar este archivo (va compilado dentro del .exe, no como dato
+# suelto — ver VoyCotizador.spec), así que solo sube en un release COMPLETO.
+# self_update.desktop_soporta_parches() la compara contra
+# CAPACIDAD_PARCHE_REQUERIDA para decidir si un exe ya instalado sabe
+# aplicar el parche que ofrece version.json, o si haría falta reinstalar.
+CAPACIDAD_PARCHE = 1
+
 
 def _dir_recursos() -> Path:
     """Carpeta donde están app.py y assets (soporta PyInstaller)."""
     meipass = getattr(sys, "_MEIPASS", None)
     return Path(meipass) if meipass else Path(__file__).resolve().parent
+
+
+def _dir_datos() -> Path:
+    """Misma carpeta de datos persistentes que usa quotetrip/config.py
+    (no se importa ese módulo aquí para no depender de código que un
+    parche a medio aplicar podría dejar inconsistente)."""
+    if getattr(sys, "frozen", False):
+        base = Path(os.environ.get("LOCALAPPDATA") or Path.home())
+        return base / "QuoteTrip"
+    return Path(__file__).resolve().parent / "data"
+
+
+def _aplicar_parche_pendiente() -> None:
+    """Si `app.py` (desde la app en ejecución) dejó un parche descargado y
+    listo en la carpeta de datos, lo aplica ahora, con el servidor todavía
+    sin arrancar (nadie tiene los archivos abiertos).
+
+    Reemplaza app.py/quotetrip/assets en la carpeta de instalación por los
+    del staging, guardando los anteriores en update_backup por si algo sale
+    mal. Nunca lanza excepción: si falla, deja el marker para reintentar en
+    el próximo arranque en vez de dejar la app a medio actualizar."""
+    dir_datos = _dir_datos()
+    staging = dir_datos / "update_staging"
+    marker = dir_datos / "update_staging.json"
+    if not marker.exists() or not staging.exists():
+        return
+
+    try:
+        info = json.loads(marker.read_text(encoding="utf-8"))
+    except Exception:
+        marker.unlink(missing_ok=True)
+        return
+    if not info.get("listo"):
+        return
+
+    dir_instalacion = _dir_recursos()
+    backup = dir_datos / "update_backup"
+    try:
+        if backup.exists():
+            shutil.rmtree(backup, ignore_errors=True)
+        backup.mkdir(parents=True, exist_ok=True)
+
+        for nombre in ("app.py", "quotetrip", "assets"):
+            origen = staging / nombre
+            if not origen.exists():
+                continue
+            destino = dir_instalacion / nombre
+            if destino.exists():
+                shutil.move(str(destino), str(backup / nombre))
+            shutil.move(str(origen), str(destino))
+    except Exception:
+        # Se deja el marker: se reintenta en el próximo arranque en vez de
+        # arrancar con una mezcla de archivos viejos/nuevos.
+        return
+
+    shutil.rmtree(staging, ignore_errors=True)
+    marker.unlink(missing_ok=True)
+
+
+def _marcar_capacidad_parche() -> None:
+    """Deja constancia en la carpeta de datos de qué CAPACIDAD_PARCHE trae
+    este desktop.py compilado. app.py (que sí se actualiza por parche) lee
+    esto para saber si puede ofrecer un parche o si este exe es de antes de
+    que existiera este mecanismo -y por tanto nunca lo aplicaría, dejando el
+    aviso de "reinicia para aplicar" en un loop sin efecto- y debe ofrecer el
+    instalador completo en su lugar. Nunca lanza excepción."""
+    try:
+        marker = _dir_datos() / "desktop_capabilities.json"
+        marker.write_text(json.dumps({"capacidad_parche": CAPACIDAD_PARCHE}), encoding="utf-8")
+    except Exception:
+        pass
 
 
 def _puerto_libre() -> int:
@@ -97,6 +178,18 @@ def main():
         idx = sys.argv.index("--run-server")
         _run_server_inproc(int(sys.argv[idx + 1]))
         return
+
+    # Si quedó un parche descargado y listo (desde la app en la sesión
+    # anterior), aplicarlo ahora, antes de que nada tenga los archivos
+    # abiertos.
+    try:
+        _aplicar_parche_pendiente()
+    except Exception:
+        pass
+
+    # Marcar la capacidad de ESTE exe para aplicar parches, para que app.py
+    # sepa si puede ofrecer uno (ver CAPACIDAD_PARCHE arriba).
+    _marcar_capacidad_parche()
 
     puerto = _puerto_libre()
     proc = _lanzar_servidor(puerto)

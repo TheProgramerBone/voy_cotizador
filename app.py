@@ -15,13 +15,14 @@ from datetime import date
 
 import streamlit as st
 
-from quotetrip import auth, tutorial
+from quotetrip import auth, self_update, tutorial
 from quotetrip.config import (
     APP_VERSION,
     COLOR_PRIMARIO_DEF,
     COLOR_SECUNDARIO_DEF,
     LOG_PATH,
     PRODUCTO_NOMBRE,
+    UPDATE_RELEASES_URL,
     UPDATE_URL,
     buscar_actualizacion,
     ruta_logo_cuenta,
@@ -120,16 +121,45 @@ with st.sidebar:
     def _chequear_update(version, url):
         return buscar_actualizacion(version, url)
 
-    _info = _chequear_update(APP_VERSION, UPDATE_URL) if UPDATE_URL else None
-    if _info:
-        st.warning(f"Nueva versión disponible: {_info['version']}")
-        if _info.get("notas"):
-            st.caption(_info["notas"])
-        if _info.get("url"):
-            if hasattr(st, "link_button"):
-                st.link_button("⬇️ Descargar actualización", _info["url"], use_container_width=True)
-            else:
-                st.markdown(f"[⬇️ Descargar actualización]({_info['url']})")
+    _parche_listo = self_update.estado_parche_pendiente()
+    if _parche_listo:
+        st.success(
+            f"✅ Actualización {_parche_listo.get('version', '')} descargada. "
+            "Cierra y vuelve a abrir la app para aplicarla."
+        )
+    else:
+        _info = _chequear_update(APP_VERSION, UPDATE_URL) if UPDATE_URL else None
+        if _info:
+            st.warning(f"Nueva versión disponible: {_info['version']}")
+            if _info.get("notas"):
+                st.caption(_info["notas"])
+            _es_parche = _info.get("tipo") == "parche"
+            if _es_parche and _info.get("url") and self_update.desktop_soporta_parches():
+                if st.button("⬇️ Actualizar ahora", use_container_width=True):
+                    with st.spinner("Descargando actualización..."):
+                        _error = self_update.preparar_parche(_info)
+                    if _error:
+                        st.error(_error)
+                    else:
+                        st.rerun()
+            elif _es_parche:
+                # Este .exe es de antes de que existiera el auto-parcheo (o
+                # quedó desactualizado): el .zip del parche no le serviría de
+                # nada, así que se manda al instalador completo en su lugar.
+                st.caption("Esta actualización requiere reinstalar (una sola vez más).")
+                if hasattr(st, "link_button"):
+                    st.link_button(
+                        "⬇️ Descargar instalador", UPDATE_RELEASES_URL, use_container_width=True
+                    )
+                else:
+                    st.markdown(f"[⬇️ Descargar instalador]({UPDATE_RELEASES_URL})")
+            elif _info.get("url"):
+                if hasattr(st, "link_button"):
+                    st.link_button(
+                        "⬇️ Descargar actualización", _info["url"], use_container_width=True
+                    )
+                else:
+                    st.markdown(f"[⬇️ Descargar actualización]({_info['url']})")
 
     # --- Registro de errores ---
     with st.expander("🛠 Registro de errores"):

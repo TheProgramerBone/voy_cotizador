@@ -75,11 +75,16 @@ def ruta_logo_cuenta(cuenta: dict) -> str | None:
 
 
 # --- Versión y actualizaciones ---
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.3.0"
 # Para habilitar el aviso de actualización, apunta esta URL a un archivo
 # version.json publicado (por ejemplo en GitHub Releases). Déjalo vacío para
 # desactivar la comprobación. Ver "README Actualizaciones.md".
 UPDATE_URL = "https://raw.githubusercontent.com/TheProgramerBone/voy_cotizador/master/version.json"
+# Fallback cuando hay un parche disponible pero este exe es de antes de que
+# existiera el mecanismo de auto-parcheo (ver self_update.desktop_soporta_parches):
+# no tiene sentido ofrecer el .zip del parche, así que se manda a la página de
+# releases para que baje el instalador completo manualmente.
+UPDATE_RELEASES_URL = "https://github.com/TheProgramerBone/voy_cotizador/releases/latest"
 
 # --- Registro de errores (log) ---
 LOG_DIR = DATA_DIR / "logs"
@@ -99,7 +104,12 @@ if not logger.handlers:
 
 def buscar_actualizacion(version_actual: str, url: str, timeout: int = 6):
     """Consulta un version.json remoto y devuelve info si hay una versión nueva.
-    Formato esperado: {"version": "1.2.0", "url": "...Setup.exe", "notas": "..."}.
+    Formato esperado:
+    {"version": "1.3.0", "tipo": "parche"|"completo", "url": "...",
+     "sha256": "...", "notas": "..."}.
+    `tipo` "parche" apunta a un .zip liviano (solo código, sin instalador)
+    aplicable sin reinstalar; "completo" (o ausente, por compatibilidad con
+    version.json viejos) apunta al Setup.exe de siempre.
     Nunca lanza excepción: si algo falla (sin internet, etc.), devuelve None."""
     if not url:
         return None
@@ -112,7 +122,13 @@ def buscar_actualizacion(version_actual: str, url: str, timeout: int = 6):
             data = json.loads(r.read().decode("utf-8"))
         ultima = str(data.get("version", "")).strip()
         if ultima and _tupla(ultima) > _tupla(version_actual):
-            return {"version": ultima, "url": data.get("url", ""), "notas": data.get("notas", "")}
+            return {
+                "version": ultima,
+                "url": data.get("url", ""),
+                "notas": data.get("notas", ""),
+                "tipo": data.get("tipo", "completo"),
+                "sha256": data.get("sha256", ""),
+            }
     except Exception as e:
         logger.info("No se pudo comprobar actualizaciones: %s", e)
     return None
