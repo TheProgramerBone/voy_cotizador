@@ -31,7 +31,23 @@ from quotetrip.cotizacion_ui import render_tab_cotizacion, render_tab_historial
 from quotetrip.db import init_db, obtener_cuenta
 from quotetrip.plantillas_ui import render_tab_plantillas
 
-st.set_page_config(page_title=f"{PRODUCTO_NOMBRE} · Cotizaciones", page_icon="✈️", layout="wide")
+st.set_page_config(
+    page_title=f"{PRODUCTO_NOMBRE} · Cotizaciones",
+    page_icon="✈️",
+    layout="wide",
+    # Streamlit oculta el menú ≡ (y con él "Configuración", donde vive el
+    # selector de tema Claro/Oscuro/Usar tema del sistema — este último ya
+    # sigue el tema de Windows en vivo, sin código nuestro) mientras
+    # desktop.py use --client.toolbarMode=minimal Y no haya menu_items
+    # definidos. Con menu_items el menú vuelve a aparecer; "Obtener ayuda"
+    # y "Reportar un error" se ocultan (no aplican, esto es una app de
+    # escritorio de un solo tenant) y "Acerca de" queda con marca propia.
+    menu_items={
+        "Get help": None,
+        "Report a bug": None,
+        "About": f"**{PRODUCTO_NOMBRE}** · versión {APP_VERSION}",
+    },
+)
 init_db()
 
 # ----------------------------------------------------------------------
@@ -115,6 +131,10 @@ with st.sidebar:
 
     st.divider()
     st.caption(f"Versión {APP_VERSION}")
+    st.caption(
+        "🌗 ¿Prefieres modo oscuro? Menú **≡** (arriba a la derecha) → "
+        "**Configuración** → tema Claro/Oscuro/Usar tema del sistema."
+    )
 
     # --- Aviso de actualización (si UPDATE_URL está configurada) ---
     @st.cache_data(ttl=3600, show_spinner=False)

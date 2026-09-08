@@ -56,6 +56,13 @@ PASOS = [
         "cotizaciones que has generado con esta cuenta, junto con qué plantilla "
         "usó cada una.",
     ),
+    (
+        "7. Modo oscuro",
+        f"{PRODUCTO_NOMBRE} sigue el tema de Windows automáticamente. Si "
+        "prefieres elegirlo tú, abre el menú **≡** (arriba a la derecha) → "
+        "**Configuración**, y escoge Claro, Oscuro, o Usar tema del sistema. "
+        "Se recuerda para la próxima vez que abras la app.",
+    ),
 ]
 
 

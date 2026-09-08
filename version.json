@@ -1,7 +1,7 @@
 {
-  "version": "1.3.0",
-  "tipo": "completo",
-  "url": "https://github.com/TheProgramerBone/voy_cotizador/releases/latest/download/QuoteTrip-Setup.exe",
+  "version": "1.3.1",
+  "tipo": "parche",
+  "url": "https://github.com/TheProgramerBone/voy_cotizador/releases/latest/download/QuoteTrip-Patch.zip",
   "sha256": "",
-  "notas": "Sistema de auto-actualización por parches: a partir de esta versión, las siguientes actualizaciones (si no tocan dependencias ni desktop.py) se instalan solas con un clic, sin reinstalador."
+  "notas": "Modo oscuro: la app ahora expone el selector de tema de Streamlit (Claro/Oscuro/Usar tema del sistema, en el menú ≡ → Configuración), que ya sigue el tema de Windows automáticamente y recuerda tu elección."
 }
