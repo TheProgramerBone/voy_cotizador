@@ -48,7 +48,10 @@ PASOS = [
         "Puedes tener varias plantillas (por ejemplo, una para Navidad) y elegir "
         "cuál usar en cada cotización. Las cotizaciones que ya generaste no "
         "cambian de aspecto aunque después edites o borres una plantilla — cada "
-        "PDF exportado conserva el diseño que tenía en ese momento.",
+        "PDF exportado conserva el diseño que tenía en ese momento. Dentro del "
+        "editor, en «Elementos libres» puedes añadir bloques de texto propio, "
+        "imágenes o formas decorativas en cualquier posición de la página — "
+        "ideal para un sello, una franja de color o un mensaje promocional.",
     ),
     (
         "6. Historial",

@@ -10,6 +10,9 @@ cuando el widget afectado ya se renderizó antes en el mismo paso de
 script, y confirmación en dos pasos para acciones destructivas
 (`confirmar_borrado` en `cotizacion_ui.py`)."""
 
+import base64
+import uuid
+
 import streamlit as st
 
 from .db import (
@@ -21,7 +24,12 @@ from .db import (
     obtener_plantillas,
 )
 from .pdf.models import (
+    AJUSTES_IMAGEN,
     ALINEACIONES,
+    ELEMENTO_TAMANO_MAX_CM,
+    ELEMENTO_TAMANO_MIN_CM,
+    FORMAS_CATALOGO,
+    FUENTE_POR_DEFECTO,
     FUENTES_CATALOGO,
     LAYOUTS_SERVICIOS,
     LOGO_ALTO_MAX_CM,
@@ -30,10 +38,14 @@ from .pdf.models import (
     MARGEN_MIN_CM,
     ORIENTACIONES,
     POSICIONES_LOGO,
+    ROTACION_MAX_GRADOS,
+    ROTACION_MIN_GRADOS,
     SECCIONES_BLOQUEADAS,
     TAMANO_FUENTE_MAX_PT,
     TAMANO_FUENTE_MIN_PT,
     TAMANOS_PAGINA,
+    TIPOS_ELEMENTO,
+    ElementoLibre,
     EncabezadoConfig,
     PaginaConfig,
     PieConfig,
@@ -62,6 +74,18 @@ _ETIQUETAS_ALINEACION = {"izquierda": "Izquierda", "centro": "Centro", "derecha"
 _ETIQUETAS_POSICION_LOGO = {"izquierda": "Izquierda", "centro": "Centro", "derecha": "Derecha"}
 _ETIQUETAS_ORIENTACION = {"vertical": "Vertical", "horizontal": "Horizontal"}
 _ETIQUETAS_LAYOUT_SERVICIOS = {"text": "Como texto", "table": "Como tabla"}
+_ETIQUETAS_TIPO_ELEMENTO = {"texto": "📝 Texto", "imagen": "🖼️ Imagen", "forma": "⬛ Forma"}
+_ETIQUETAS_FORMA = {
+    "rectangulo": "Rectángulo",
+    "rectangulo_redondeado": "Rectángulo redondeado",
+    "elipse": "Elipse / círculo",
+    "linea": "Línea",
+}
+_ETIQUETAS_AJUSTE_IMAGEN = {
+    "contain": "Ajustar sin recortar",
+    "cover": "Rellenar la caja (recorta)",
+    "stretch": "Estirar (puede deformar)",
+}
 
 # Campos de la cuenta que afectan a la vista previa — se usan como parte de
 # la clave de caché (ver `_preview_cacheada`).
@@ -330,6 +354,65 @@ def _seed_editor_state(id_: str, definicion: TemplateDefinition):
     )
     st.session_state[p + "serv_layout"] = layout_servicios
 
+    st.session_state[p + "elementos_orden"] = [e.id for e in definicion.elementos]
+    for e in definicion.elementos:
+        _seed_elemento(p, e.id, e.tipo, e)
+
+
+def _seed_elemento(p: str, elemento_id: str, tipo: str, e: ElementoLibre | None = None):
+    """Precarga las claves de un elemento libre (nuevo si `e` es `None`,
+    o desde una `ElementoLibre` existente al abrir el editor)."""
+    ep = p + f"el_{elemento_id}_"
+    op = (e.opciones if e else None) or {}
+    st.session_state[ep + "tipo"] = tipo
+    st.session_state[ep + "x"] = float(e.x_cm) if e else 2.0
+    st.session_state[ep + "y"] = float(e.y_cm) if e else 2.0
+    st.session_state[ep + "ancho"] = float(e.ancho_cm) if e else 5.0
+    st.session_state[ep + "alto"] = float(e.alto_cm) if e else 2.0
+    st.session_state[ep + "rot"] = float(e.rotacion_grados) if e else 0.0
+    st.session_state[ep + "z"] = int(e.z_index) if e else 0
+    st.session_state[ep + "vis"] = bool(e.visible) if e else True
+    st.session_state[ep + "opacidad"] = float(e.opacidad) if e else 1.0
+    if tipo == "texto":
+        st.session_state[ep + "texto"] = op.get("texto", "Texto")
+        st.session_state[ep + "fuente"] = op.get("fuente_id", FUENTE_POR_DEFECTO)
+        st.session_state[ep + "tam"] = float(op.get("tamano_pt", 10.5))
+        st.session_state[ep + "peso"] = op.get("peso", "normal")
+        st.session_state[ep + "color"] = op.get("color") or "#000000"
+        st.session_state[ep + "alin"] = op.get("alineacion", "izquierda")
+        st.session_state[ep + "interlineado"] = float(op.get("interlineado", 1.15))
+    elif tipo == "forma":
+        st.session_state[ep + "forma"] = op.get("forma", "rectangulo")
+        st.session_state[ep + "rel_on"] = op.get("color_relleno") is not None
+        st.session_state[ep + "rel"] = op.get("color_relleno") or "#2563EB"
+        st.session_state[ep + "bor_on"] = op.get("color_borde") is not None
+        st.session_state[ep + "bor"] = op.get("color_borde") or "#1E3A8A"
+        st.session_state[ep + "grosor"] = float(op.get("grosor_borde_pt", 1.0))
+        st.session_state[ep + "radio"] = float(op.get("radio_cm", 0.3))
+    elif tipo == "imagen":
+        st.session_state[ep + "imagen_b64"] = op.get("imagen_b64")
+        st.session_state[ep + "ajuste"] = op.get("ajuste", "contain")
+
+
+def _agregar_elemento(id_: str, tipo: str):
+    p = f"pe_{id_}_"
+    nuevo_id = uuid.uuid4().hex
+    orden = st.session_state.get(p + "elementos_orden", [])
+    orden.append(nuevo_id)
+    st.session_state[p + "elementos_orden"] = orden
+    _seed_elemento(p, nuevo_id, tipo)
+
+
+def _eliminar_elemento(id_: str, elemento_id: str):
+    p = f"pe_{id_}_"
+    orden = st.session_state.get(p + "elementos_orden", [])
+    if elemento_id in orden:
+        orden.remove(elemento_id)
+    st.session_state[p + "elementos_orden"] = orden
+    ep = p + f"el_{elemento_id}_"
+    for clave in [k for k in st.session_state if k.startswith(ep)]:
+        del st.session_state[clave]
+
 
 def _construir_definicion_desde_widgets(id_: str, base_id: str | None) -> TemplateDefinition:
     """Lee los valores actuales de los widgets del editor (ya en
@@ -378,7 +461,189 @@ def _construir_definicion_desde_widgets(id_: str, base_id: str | None) -> Templa
         ),
         pie=PieConfig(mostrar_linea_separadora=ss.get(p + "pie_linea", True)),
         secciones=secciones,
+        elementos=_elementos_desde_widgets(p),
     )
+
+
+def _elementos_desde_widgets(p: str) -> list[ElementoLibre]:
+    ss = st.session_state
+    elementos = []
+    for eid in ss.get(p + "elementos_orden", []):
+        ep = p + f"el_{eid}_"
+        if ep + "tipo" not in ss:
+            continue  # se eliminó en este mismo paso de edición
+        tipo = ss.get(ep + "tipo", "texto")
+        if tipo == "texto":
+            opciones = {
+                "texto": ss.get(ep + "texto", ""),
+                "fuente_id": ss.get(ep + "fuente", FUENTE_POR_DEFECTO),
+                "tamano_pt": ss.get(ep + "tam", 10.5),
+                "peso": ss.get(ep + "peso", "normal"),
+                "color": ss.get(ep + "color") or "#000000",
+                "alineacion": ss.get(ep + "alin", "izquierda"),
+                "interlineado": ss.get(ep + "interlineado", 1.15),
+            }
+        elif tipo == "forma":
+            opciones = {
+                "forma": ss.get(ep + "forma", "rectangulo"),
+                "color_relleno": ss.get(ep + "rel") if ss.get(ep + "rel_on") else None,
+                "color_borde": ss.get(ep + "bor") if ss.get(ep + "bor_on") else None,
+                "grosor_borde_pt": ss.get(ep + "grosor", 1.0),
+                "radio_cm": ss.get(ep + "radio", 0.3),
+            }
+        else:  # "imagen"
+            opciones = {
+                "imagen_b64": ss.get(ep + "imagen_b64"),
+                "ajuste": ss.get(ep + "ajuste", "contain"),
+            }
+        elementos.append(
+            ElementoLibre(
+                id=eid,
+                tipo=tipo,
+                x_cm=ss.get(ep + "x", 1.0),
+                y_cm=ss.get(ep + "y", 1.0),
+                ancho_cm=ss.get(ep + "ancho", 5.0),
+                alto_cm=ss.get(ep + "alto", 2.0),
+                rotacion_grados=ss.get(ep + "rot", 0.0),
+                z_index=int(ss.get(ep + "z", 0)),
+                visible=bool(ss.get(ep + "vis", True)),
+                opacidad=ss.get(ep + "opacidad", 1.0),
+                opciones=opciones,
+            )
+        )
+    return elementos
+
+
+def _render_elemento(id_: str, eid: str, indice: int):
+    p = f"pe_{id_}_"
+    ep = p + f"el_{eid}_"
+    tipo = st.session_state.get(ep + "tipo", "texto")
+    etiqueta = _ETIQUETAS_TIPO_ELEMENTO.get(tipo, tipo)
+    with st.container(border=True):
+        st.markdown(f"**{etiqueta} #{indice + 1}**")
+
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            st.number_input(
+                "X (cm, desde la izquierda)",
+                0.0,
+                60.0,
+                key=ep + "x",
+                step=0.1,
+            )
+        with c2:
+            st.number_input(
+                "Y (cm, desde arriba)",
+                0.0,
+                60.0,
+                key=ep + "y",
+                step=0.1,
+            )
+        with c3:
+            st.number_input(
+                "Ancho (cm)",
+                ELEMENTO_TAMANO_MIN_CM,
+                ELEMENTO_TAMANO_MAX_CM,
+                key=ep + "ancho",
+                step=0.1,
+            )
+        with c4:
+            st.number_input(
+                "Alto (cm)",
+                ELEMENTO_TAMANO_MIN_CM,
+                ELEMENTO_TAMANO_MAX_CM,
+                key=ep + "alto",
+                step=0.1,
+            )
+
+        c5, c6, c7, c8 = st.columns(4)
+        with c5:
+            st.number_input(
+                "Rotación (°)", ROTACION_MIN_GRADOS, ROTACION_MAX_GRADOS, key=ep + "rot", step=1.0
+            )
+        with c6:
+            st.number_input("Capa (z-index)", -100, 100, key=ep + "z", step=1)
+        with c7:
+            st.slider("Opacidad", 0.0, 1.0, key=ep + "opacidad", step=0.05)
+        with c8:
+            st.checkbox("Visible", key=ep + "vis")
+
+        if tipo == "texto":
+            st.text_area("Texto", key=ep + "texto", height=80)
+            t1, t2, t3 = st.columns(3)
+            with t1:
+                st.selectbox(
+                    "Fuente",
+                    options=list(FUENTES_CATALOGO.keys()),
+                    format_func=lambda k: FUENTES_CATALOGO[k]["etiqueta"],
+                    key=ep + "fuente",
+                )
+                st.selectbox(
+                    "Peso",
+                    options=["normal", "bold"],
+                    format_func=lambda w: "Negrita" if w == "bold" else "Normal",
+                    key=ep + "peso",
+                )
+            with t2:
+                st.number_input("Tamaño (pt)", 6.0, 72.0, key=ep + "tam", step=0.5)
+                st.number_input("Interlineado", 0.8, 3.0, key=ep + "interlineado", step=0.05)
+            with t3:
+                st.color_picker("Color", key=ep + "color")
+                st.selectbox(
+                    "Alineación",
+                    options=list(ALINEACIONES),
+                    format_func=lambda a: _ETIQUETAS_ALINEACION.get(a, a),
+                    key=ep + "alin",
+                )
+        elif tipo == "forma":
+            st.selectbox(
+                "Forma",
+                options=list(FORMAS_CATALOGO),
+                format_func=lambda f: _ETIQUETAS_FORMA.get(f, f),
+                key=ep + "forma",
+            )
+            f1, f2, f3 = st.columns(3)
+            with f1:
+                st.checkbox("Con relleno", key=ep + "rel_on")
+                if st.session_state[ep + "rel_on"]:
+                    st.color_picker("Color de relleno", key=ep + "rel")
+            with f2:
+                st.checkbox("Con borde", key=ep + "bor_on")
+                if st.session_state[ep + "bor_on"]:
+                    st.color_picker("Color de borde", key=ep + "bor")
+                    st.number_input(
+                        "Grosor del borde (pt)", 0.25, 10.0, key=ep + "grosor", step=0.25
+                    )
+            with f3:
+                if st.session_state.get(ep + "forma") == "rectangulo_redondeado":
+                    st.number_input("Radio de esquina (cm)", 0.0, 5.0, key=ep + "radio", step=0.1)
+        else:  # "imagen"
+            archivo = st.file_uploader("Imagen", type=["png", "jpg", "jpeg"], key=ep + "upload")
+            if archivo is not None:
+                st.session_state[ep + "imagen_b64"] = base64.b64encode(archivo.read()).decode(
+                    "ascii"
+                )
+            if st.session_state.get(ep + "imagen_b64"):
+                st.image(
+                    base64.b64decode(st.session_state[ep + "imagen_b64"]),
+                    caption="Imagen actual",
+                    width=150,
+                )
+            else:
+                st.caption("Sin imagen todavía — no se dibujará hasta que subas una.")
+            st.selectbox(
+                "Ajuste dentro de la caja",
+                options=list(AJUSTES_IMAGEN),
+                format_func=lambda a: _ETIQUETAS_AJUSTE_IMAGEN.get(a, a),
+                key=ep + "ajuste",
+            )
+
+        st.button(
+            "🗑️ Eliminar elemento",
+            key=p + f"del_el_{eid}",
+            on_click=_eliminar_elemento,
+            args=(id_, eid),
+        )
 
 
 def _render_editor(cuenta: dict):
@@ -517,6 +782,37 @@ def _render_editor(cuenta: dict):
                         format_func=lambda layout: _ETIQUETAS_LAYOUT_SERVICIOS.get(layout, layout),
                         key=p + "serv_layout",
                     )
+
+        with st.expander("Elementos libres (texto, imágenes, formas)"):
+            st.caption(
+                "Añade bloques de texto propio, imágenes o formas decorativas en "
+                "cualquier posición de la página (x/y desde la esquina superior "
+                "izquierda). Quedan siempre detrás del contenido de la "
+                "cotización — son para fondos, marcas de agua o decoración, no "
+                "para taparla."
+            )
+            orden_el = st.session_state[p + "elementos_orden"]
+            for i, eid in enumerate(orden_el):
+                _render_elemento(id_, eid, i)
+
+            st.markdown("**+ Añadir elemento**")
+            c_tipo, c_add = st.columns([3, 1])
+            with c_tipo:
+                st.selectbox(
+                    "Tipo de elemento nuevo",
+                    options=list(TIPOS_ELEMENTO),
+                    format_func=lambda t: _ETIQUETAS_TIPO_ELEMENTO.get(t, t),
+                    key=p + "nuevo_elemento_tipo",
+                    label_visibility="collapsed",
+                )
+            with c_add:
+                st.button(
+                    "Añadir",
+                    key=p + "btn_add_elemento",
+                    use_container_width=True,
+                    on_click=_agregar_elemento,
+                    args=(id_, st.session_state.get(p + "nuevo_elemento_tipo", "texto")),
+                )
 
         st.divider()
         c_guardar, c_volver = st.columns(2)

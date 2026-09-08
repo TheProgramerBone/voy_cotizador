@@ -12,8 +12,15 @@ from pypdf import PdfReader
 
 from quotetrip.pdf import construir_pdf
 from quotetrip.pdf.engine.renderer import renderizar_plantilla
-from quotetrip.pdf.models import SeccionConfig, TemplateDefinition, validar_plantilla
+from quotetrip.pdf.models import ElementoLibre, SeccionConfig, TemplateDefinition, validar_plantilla
 from quotetrip.pdf.presets import listar_presets, obtener_preset
+
+# PNG 1x1 rojo válido — el mínimo necesario para ejercitar el camino real de
+# `_dibujar_imagen` (decodificar base64 + `ImageReader`), sin depender de un
+# archivo de fixture aparte.
+_PNG_1X1_B64 = (
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgAAIAAAUAAen63NgAAAAASUVORK5CYII="
+)
 
 
 def _texto(pdf_bytes: bytes) -> str:
@@ -66,6 +73,83 @@ def test_cotizacion_larga_no_rompe(glob_de_prueba, opcion_de_prueba):
     pdf_bytes = construir_pdf(glob_de_prueba, [op])
     assert pdf_bytes[:5] == b"%PDF-"
     assert len(PdfReader(io.BytesIO(pdf_bytes)).pages) >= 1
+
+
+# ----------------------------------------------------------------------
+# Elementos libres (Fase 2 del editor de plantillas)
+# ----------------------------------------------------------------------
+def test_elemento_texto_aparece_en_el_pdf(glob_de_prueba, opcion_de_prueba):
+    plantilla = obtener_preset("clasica")
+    plantilla.elementos = [
+        ElementoLibre(
+            tipo="texto",
+            x_cm=1,
+            y_cm=1,
+            ancho_cm=6,
+            alto_cm=2,
+            opciones={"texto": "Oferta de temporada"},
+        )
+    ]
+    validar_plantilla(plantilla)
+    pdf_bytes = renderizar_plantilla(plantilla, glob_de_prueba, [opcion_de_prueba()])
+    assert "Oferta de temporada" in _texto(pdf_bytes)
+
+
+def test_elemento_forma_e_imagen_no_rompen_el_pdf(glob_de_prueba, opcion_de_prueba):
+    """Formas (con y sin colores) y una imagen válida en base64 se dibujan
+    sin lanzar excepción — no hay forma sencilla de verificar píxeles desde
+    `pypdf`, así que aquí solo se confirma que el PDF sigue siendo válido."""
+    plantilla = obtener_preset("clasica")
+    plantilla.elementos = [
+        ElementoLibre(
+            tipo="forma",
+            rotacion_grados=10,
+            opciones={
+                "forma": "rectangulo_redondeado",
+                "color_relleno": "#EEEEEE",
+                "color_borde": "#2563EB",
+            },
+        ),
+        ElementoLibre(tipo="forma", opciones={"forma": "linea", "color_borde": "#000000"}),
+        ElementoLibre(
+            tipo="forma", opciones={"forma": "elipse"}
+        ),  # sin colores: no dibuja nada, no falla
+        ElementoLibre(
+            tipo="imagen", opacidad=0.4, opciones={"imagen_b64": _PNG_1X1_B64, "ajuste": "cover"}
+        ),
+    ]
+    validar_plantilla(plantilla)
+    pdf_bytes = renderizar_plantilla(plantilla, glob_de_prueba, [opcion_de_prueba()])
+    assert pdf_bytes[:5] == b"%PDF-"
+
+
+def test_elemento_imagen_con_datos_corruptos_se_omite(glob_de_prueba, opcion_de_prueba):
+    """Un `imagen_b64` que no decodifica a una imagen válida no debe
+    romper el PDF — degradación elegante, igual que el resto del motor."""
+    plantilla = obtener_preset("clasica")
+    plantilla.elementos = [
+        ElementoLibre(tipo="imagen", opciones={"imagen_b64": "esto-no-es-base64-de-una-imagen"})
+    ]
+    pdf_bytes = renderizar_plantilla(plantilla, glob_de_prueba, [opcion_de_prueba()])
+    assert pdf_bytes[:5] == b"%PDF-"
+
+
+def test_elemento_oculto_no_se_dibuja(glob_de_prueba, opcion_de_prueba):
+    plantilla = obtener_preset("clasica")
+    plantilla.elementos = [
+        ElementoLibre(tipo="texto", visible=False, opciones={"texto": "NoDeberiaAparecer"})
+    ]
+    pdf_bytes = renderizar_plantilla(plantilla, glob_de_prueba, [opcion_de_prueba()])
+    assert "NoDeberiaAparecer" not in _texto(pdf_bytes)
+
+
+def test_plantilla_sin_elementos_sigue_funcionando(glob_de_prueba, opcion_de_prueba):
+    """Regresión: las plantillas ya guardadas antes de la Fase 2 (JSON sin
+    `elementos`, cargado como lista vacía) siguen renderizando igual."""
+    for preset in listar_presets():
+        assert preset.elementos == []
+        pdf_bytes = renderizar_plantilla(preset, glob_de_prueba, [opcion_de_prueba()])
+        assert pdf_bytes[:5] == b"%PDF-"
 
 
 def test_plantilla_custom_seccion_oculta_no_aparece(glob_de_prueba, opcion_de_prueba):

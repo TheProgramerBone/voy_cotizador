@@ -19,7 +19,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # ----------------------------------------------------------------------
 # Catálogos controlados — nunca se aceptan valores fuera de estas listas.
@@ -76,10 +76,26 @@ ALINEACIONES = ("izquierda", "centro", "derecha")
 PESOS = ("normal", "bold")
 LAYOUTS_SERVICIOS = ("text", "table")
 
+# Tamaño físico de página en cm, sin orientación aplicada — usado solo para
+# advertir en validar_plantilla() si un elemento libre queda fuera de la
+# página, nunca para el render real (eso lo hace engine/renderer.py con las
+# constantes de reportlab.lib.pagesizes, la fuente de verdad).
+_TAMANOS_PAGINA_CM = {"A4": (21.0, 29.7), "Carta": (21.59, 27.94)}
+
+# Elementos libres (Fase 2 del editor: posición absoluta por formulario,
+# sin canvas interactivo todavía — ver .claude/pendiente/ o el hilo de
+# diseño para el porqué). Tipos mínimos pedidos: texto libre, imagen,
+# formas básicas.
+TIPOS_ELEMENTO = ("texto", "imagen", "forma")
+FORMAS_CATALOGO = ("rectangulo", "rectangulo_redondeado", "elipse", "linea")
+AJUSTES_IMAGEN = ("contain", "cover", "stretch")
+
 # Rangos seguros para validar_plantilla().
 MARGEN_MIN_CM, MARGEN_MAX_CM = 1.0, 5.0
 TAMANO_FUENTE_MIN_PT, TAMANO_FUENTE_MAX_PT = 6.0, 24.0
 LOGO_ALTO_MIN_CM, LOGO_ALTO_MAX_CM = 0.8, 5.0
+ELEMENTO_TAMANO_MIN_CM, ELEMENTO_TAMANO_MAX_CM = 0.3, 50.0
+ROTACION_MIN_GRADOS, ROTACION_MAX_GRADOS = -180.0, 180.0
 
 
 def _hex_valido(valor) -> bool:
@@ -165,6 +181,51 @@ class SeccionConfig:
 
 
 @dataclass
+class ElementoLibre:
+    """Elemento de posición libre (texto/imagen/forma) sobre la página,
+    editado por formulario (x/y/ancho/alto/rotación/capas en campos
+    numéricos) — sin canvas de arrastre todavía, esa es la Fase 3.
+
+    `x_cm`/`y_cm` se miden desde la esquina SUPERIOR IZQUIERDA de la
+    página, con Y creciendo hacia abajo (igual convención que los
+    márgenes de `PaginaConfig`, más intuitiva en un formulario que el
+    origen inferior izquierdo nativo de ReportLab — la conversión vive en
+    `engine/elementos_libres.py`, nunca aquí).
+
+    `opciones` guarda los campos específicos de `tipo` (mismo patrón que
+    `SeccionConfig.opciones`, para no inflar esta dataclase con campos que
+    no aplican a los otros tipos):
+      - "texto": {texto, fuente_id, tamano_pt, peso, color, alineacion,
+        interlineado}
+      - "imagen": {imagen_b64, ajuste} — se guarda la imagen ya codificada
+        en base64 dentro del JSON (igual filosofía que el snapshot de la
+        plantilla en cada cotización: autocontenido, nunca depende de un
+        archivo externo que después podría borrarse o cambiar).
+      - "forma": {forma, color_relleno, color_borde, grosor_borde_pt,
+        radio_cm} — colores `None` = sin relleno/borde.
+
+    Importante: por cómo ReportLab/Platypus dibuja la página (el
+    encabezado/pie y estos elementos se pintan primero, como fondo de
+    página; el contenido de la cotización se dibuja encima), los
+    elementos libres quedan siempre DETRÁS del contenido principal —
+    `z_index` solo ordena entre elementos libres, no contra el contenido
+    de la cotización. Sirven para fondos, marcas de agua, decoración o
+    bloques de texto propio, no para superponerse a los datos."""
+
+    id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    tipo: str = "texto"
+    x_cm: float = 1.0
+    y_cm: float = 1.0
+    ancho_cm: float = 5.0
+    alto_cm: float = 2.0
+    rotacion_grados: float = 0.0
+    z_index: int = 0
+    visible: bool = True
+    opacidad: float = 1.0
+    opciones: dict = field(default_factory=dict)
+
+
+@dataclass
 class TemplateDefinition:
     id: str
     nombre: str
@@ -176,6 +237,7 @@ class TemplateDefinition:
     encabezado: EncabezadoConfig = field(default_factory=EncabezadoConfig)
     pie: PieConfig = field(default_factory=PieConfig)
     secciones: list[SeccionConfig] = field(default_factory=list)
+    elementos: list[ElementoLibre] = field(default_factory=list)
     creado_en: str | None = None
     actualizado_en: str | None = None
 
@@ -198,6 +260,22 @@ class TemplateDefinition:
             )
             for s in data.get("secciones", [])
         ]
+        elementos = [
+            ElementoLibre(
+                id=e.get("id") or uuid.uuid4().hex,
+                tipo=e.get("tipo", "texto"),
+                x_cm=e.get("x_cm", 1.0),
+                y_cm=e.get("y_cm", 1.0),
+                ancho_cm=e.get("ancho_cm", 5.0),
+                alto_cm=e.get("alto_cm", 2.0),
+                rotacion_grados=e.get("rotacion_grados", 0.0),
+                z_index=e.get("z_index", 0),
+                visible=bool(e.get("visible", True)),
+                opacidad=e.get("opacidad", 1.0),
+                opciones=dict(e.get("opciones") or {}),
+            )
+            for e in data.get("elementos", [])
+        ]
         return cls(
             id=data["id"],
             nombre=data.get("nombre", ""),
@@ -209,6 +287,7 @@ class TemplateDefinition:
             encabezado=_construir(EncabezadoConfig, data.get("encabezado")),
             pie=_construir(PieConfig, data.get("pie")),
             secciones=secciones,
+            elementos=elementos,
             creado_en=data.get("creado_en"),
             actualizado_en=data.get("actualizado_en"),
         )
@@ -243,11 +322,15 @@ class TemplateDefinition:
 def migrar_definicion(data: dict) -> dict:
     """Sube `data` (dict crudo, recién deserializado de JSON) a la versión
     de esquema actual. Cadena de migraciones incrementales: cada paso futuro
-    sube en +1 `schema_version`. Hoy solo existe la v1, así que es un no-op,
-    pero deja listo el punto de extensión para cuando cambie el esquema."""
+    sube en +1 `schema_version`. La v2 (elementos libres) no necesita un
+    paso de migración real: un JSON v1 sin la clave "elementos" ya cae en
+    la lista vacía por defecto de `TemplateDefinition.from_dict()` — este
+    es un no-op que solo actualiza el número, pero deja listo el punto de
+    extensión para cuando el próximo cambio de esquema sí necesite tocar
+    los datos."""
     # version = data.get("schema_version", 1)
-    # if version < 2:
-    #     data = _migrar_v1_a_v2(data)
+    # if version < 3:
+    #     data = _migrar_v2_a_v3(data)
     data["schema_version"] = SCHEMA_VERSION
     return data
 
@@ -336,5 +419,80 @@ def validar_plantilla(template: TemplateDefinition) -> list[str]:
 
     if not any(s.visible for s in template.secciones):
         raise ValueError("La plantilla no tiene ninguna sección visible.")
+
+    # --- Elementos libres ---
+    ancho_pag_cm, alto_pag_cm = _TAMANOS_PAGINA_CM.get(p.tamano, _TAMANOS_PAGINA_CM["A4"])
+    if p.orientacion == "horizontal":
+        ancho_pag_cm, alto_pag_cm = alto_pag_cm, ancho_pag_cm
+
+    ids_vistos: set[str] = set()
+    elementos_validos: list[ElementoLibre] = []
+    for el in template.elementos:
+        if el.tipo not in TIPOS_ELEMENTO:
+            avisos.append(f"Se ignoró un elemento de tipo desconocido «{el.tipo}».")
+            continue
+        if not el.id or el.id in ids_vistos:
+            el.id = uuid.uuid4().hex
+        ids_vistos.add(el.id)
+
+        for campo, minimo, maximo in (
+            ("ancho_cm", ELEMENTO_TAMANO_MIN_CM, ELEMENTO_TAMANO_MAX_CM),
+            ("alto_cm", ELEMENTO_TAMANO_MIN_CM, ELEMENTO_TAMANO_MAX_CM),
+        ):
+            valor = getattr(el, campo)
+            if not isinstance(valor, (int, float)) or not (minimo <= valor <= maximo):
+                base = valor if isinstance(valor, (int, float)) else 5.0
+                setattr(el, campo, min(max(base, minimo), maximo))
+                avisos.append(f"Tamaño de un elemento («{campo}») fuera de rango; se ajustó.")
+        if not isinstance(el.rotacion_grados, (int, float)):
+            el.rotacion_grados = 0.0
+        else:
+            el.rotacion_grados = min(
+                max(el.rotacion_grados, ROTACION_MIN_GRADOS), ROTACION_MAX_GRADOS
+            )
+        if not isinstance(el.opacidad, (int, float)) or not (0.0 <= el.opacidad <= 1.0):
+            el.opacidad = min(
+                max(el.opacidad if isinstance(el.opacidad, (int, float)) else 1.0, 0.0), 1.0
+            )
+        if not isinstance(el.z_index, int):
+            try:
+                el.z_index = int(el.z_index)
+            except (TypeError, ValueError):
+                el.z_index = 0
+        if not isinstance(el.x_cm, (int, float)):
+            el.x_cm = 1.0
+        if not isinstance(el.y_cm, (int, float)):
+            el.y_cm = 1.0
+        if (
+            el.x_cm + el.ancho_cm < 0
+            or el.x_cm > ancho_pag_cm
+            or el.y_cm + el.alto_cm < 0
+            or el.y_cm > alto_pag_cm
+        ):
+            avisos.append(
+                f"Un elemento «{el.tipo}» queda completamente fuera de la página; "
+                "no se verá en el PDF."
+            )
+
+        op = el.opciones if isinstance(el.opciones, dict) else {}
+        if el.tipo == "texto":
+            if op.get("color") is not None and not _hex_valido(op["color"]):
+                op["color"] = None
+            if op.get("fuente_id", FUENTE_POR_DEFECTO) not in FUENTES_CATALOGO:
+                op["fuente_id"] = FUENTE_POR_DEFECTO
+        elif el.tipo == "forma":
+            if op.get("forma", "rectangulo") not in FORMAS_CATALOGO:
+                op["forma"] = "rectangulo"
+                avisos.append("Forma no reconocida en un elemento; se usó rectángulo.")
+            for campo_color in ("color_relleno", "color_borde"):
+                if op.get(campo_color) is not None and not _hex_valido(op[campo_color]):
+                    op[campo_color] = None
+        elif el.tipo == "imagen":
+            if op.get("ajuste", "contain") not in AJUSTES_IMAGEN:
+                op["ajuste"] = "contain"
+        el.opciones = op
+
+        elementos_validos.append(el)
+    template.elementos = elementos_validos
 
     return avisos

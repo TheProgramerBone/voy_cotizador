@@ -12,6 +12,7 @@ from reportlab.lib.units import cm
 from reportlab.platypus import PageBreak, SimpleDocTemplate
 
 from .context import RenderContext
+from .elementos_libres import dibujar_elementos_libres
 from .encabezado import construir_encabezado_pie
 from .registry import SECTION_RENDERERS
 from .styles import construir_estilos
@@ -72,7 +73,15 @@ def renderizar_plantilla(template, glob: dict, opciones: list) -> bytes:
                     continue  # tipo desconocido: validar_plantilla() ya lo filtra
                 story.extend(render_fn(ctx, seccion))
 
-        dibujar = construir_encabezado_pie(glob, template)
+        dibujar_encabezado_pie = construir_encabezado_pie(glob, template)
+
+        def dibujar(canvas, doc):
+            # Elementos libres primero (quedan de fondo), encabezado/pie
+            # encima — ambos se pintan antes que el `story` de la
+            # cotización, que ReportLab dibuja por su cuenta sobre esto.
+            dibujar_elementos_libres(canvas, template, doc.pagesize[1])
+            dibujar_encabezado_pie(canvas, doc)
+
         doc.build(story, onFirstPage=dibujar, onLaterPages=dibujar)
 
     buffer.seek(0)

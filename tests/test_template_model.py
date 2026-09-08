@@ -4,6 +4,7 @@ sistema de plantillas PDF."""
 
 from quotetrip.pdf.models import (
     SECCIONES_BLOQUEADAS,
+    ElementoLibre,
     SeccionConfig,
     TemplateDefinition,
     validar_plantilla,
@@ -99,6 +100,83 @@ def test_validar_ignora_tipo_de_seccion_desconocido():
     )
     validar_plantilla(plantilla)
     assert "algo_inventado" not in {s.tipo for s in plantilla.secciones}
+
+
+def test_round_trip_json_con_elementos_libres():
+    original = _plantilla_minima(
+        elementos=[
+            ElementoLibre(
+                tipo="texto",
+                x_cm=2.0,
+                y_cm=3.0,
+                rotacion_grados=15.0,
+                opciones={"texto": "Hola", "color": "#112233"},
+            ),
+            ElementoLibre(tipo="forma", opciones={"forma": "elipse", "color_relleno": "#2563EB"}),
+        ]
+    )
+    restaurada = TemplateDefinition.from_json(original.to_json())
+    assert restaurada.to_dict() == original.to_dict()
+    assert len(restaurada.elementos) == 2
+    assert restaurada.elementos[0].opciones["texto"] == "Hola"
+
+
+def test_from_dict_sin_elementos_no_revienta():
+    """Un JSON guardado antes de la Fase 2 (sin la clave "elementos") debe
+    seguir cargando, con la lista vacía por defecto — compatibilidad hacia
+    atrás obligatoria (ver `migrar_definicion`)."""
+    data = _plantilla_minima().to_dict()
+    del data["elementos"]
+    restaurada = TemplateDefinition.from_dict(data)
+    assert restaurada.elementos == []
+
+
+def test_validar_ignora_elemento_de_tipo_desconocido():
+    plantilla = _plantilla_minima(elementos=[ElementoLibre(tipo="video")])
+    validar_plantilla(plantilla)
+    assert plantilla.elementos == []
+
+
+def test_validar_corrige_tamano_de_elemento_fuera_de_rango():
+    plantilla = _plantilla_minima(elementos=[ElementoLibre(tipo="texto", ancho_cm=999.0)])
+    avisos = validar_plantilla(plantilla)
+    assert plantilla.elementos[0].ancho_cm <= 50.0
+    assert avisos
+
+
+def test_validar_corrige_opacidad_invalida():
+    plantilla = _plantilla_minima(elementos=[ElementoLibre(tipo="forma", opacidad=5.0)])
+    validar_plantilla(plantilla)
+    assert 0.0 <= plantilla.elementos[0].opacidad <= 1.0
+
+
+def test_validar_reasigna_ids_duplicados():
+    plantilla = _plantilla_minima(
+        elementos=[ElementoLibre(id="dup", tipo="texto"), ElementoLibre(id="dup", tipo="forma")]
+    )
+    validar_plantilla(plantilla)
+    ids = [e.id for e in plantilla.elementos]
+    assert len(ids) == len(set(ids))
+
+
+def test_validar_corrige_forma_desconocida():
+    plantilla = _plantilla_minima(
+        elementos=[ElementoLibre(tipo="forma", opciones={"forma": "estrella"})]
+    )
+    avisos = validar_plantilla(plantilla)
+    assert plantilla.elementos[0].opciones["forma"] == "rectangulo"
+    assert avisos
+
+
+def test_validar_avisa_elemento_fuera_de_pagina():
+    plantilla = _plantilla_minima(
+        elementos=[ElementoLibre(tipo="texto", x_cm=500.0, y_cm=500.0, ancho_cm=2.0, alto_cm=2.0)]
+    )
+    avisos = validar_plantilla(plantilla)
+    assert any("fuera de la página" in a for a in avisos)
+    # No se elimina el elemento, solo se avisa — el usuario puede querer
+    # moverlo después en vez de perder lo que ya configuró.
+    assert len(plantilla.elementos) == 1
 
 
 def test_validar_garantiza_siempre_al_menos_una_seccion_visible():
